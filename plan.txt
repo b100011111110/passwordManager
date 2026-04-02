@@ -1,0 +1,25 @@
+i want to make a professional level project in c++
+i want to make a password manager cli tool
+the tool must support the following features
+-create account
+-delete account
+-add password
+-delete password
+-fetch password
+the password is stored in username-password pair inside the accout
+there must be support for encryption - decryption
+i want the project to be done in 10 stages
+2-3 commit every day
+the usage of tool must be like:
+passwordMgr add-account accountName accountPassword
+passwordMgr delete-account accountName accountPassword
+passwordMgr add-password accountName accountPassword userId password
+passwordMgr delete-password accountName accountPassword userId
+passwordMgr fetch-password accountName accountPassword userId password
+this must store data locally in an unrecognizable encrypted file
+this project must implement concepts such as structs classes and oop concepts such as polymorphism abstract classes
+
+make it simple 
+i am a beginer 
+explain me everything 
+today we just do the skeliton 
