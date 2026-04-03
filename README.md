@@ -1,4 +1,4 @@
-# 🔐 PasswordMgr
+# 🔐 Password Manager
 
 > A professional-grade, CLI-based password manager written in modern C++ — built with encryption, clean OOP design, and local-first storage.
 
@@ -65,63 +65,6 @@ $ passwordMgr delete-account myVault myMasterPass123
 ✔ Account 'myVault' deleted successfully.
 ```
 
----
-
-## Project Architecture
-
-```
-passwordMgr/
-├── src/
-│   ├── main.cpp                  # Entry point, CLI argument parsing
-│   ├── cli/
-│   │   ├── CommandParser.h/.cpp  # Parses and validates CLI input
-│   │   └── CommandRouter.h/.cpp  # Routes commands to handlers
-│   ├── core/
-│   │   ├── Account.h/.cpp        # Account class — holds credentials
-│   │   ├── Credential.h/.cpp     # Credential struct — userId + password pair
-│   │   ├── Manager.h/.cpp        # Central manager — orchestrates operations
-│   │   └── IStorage.h            # Abstract storage interface
-│   ├── storage/
-│   │   ├── FileStorage.h/.cpp    # Concrete file-based storage implementation
-│   │   └── StorageSerializer.h   # Handles binary serialization/deserialization
-│   ├── encryption/
-│   │   ├── IEncryptor.h          # Abstract encryption interface
-│   │   ├── AESEncryptor.h/.cpp   # AES encryption implementation
-│   │   └── KeyDerivation.h/.cpp  # Derives encryption keys from passwords
-│   └── utils/
-│       ├── Logger.h/.cpp         # Minimal logging utility
-│       └── ErrorHandler.h/.cpp   # Centralized error handling
-├── tests/
-│   ├── test_account.cpp
-│   ├── test_storage.cpp
-│   └── test_encryption.cpp
-├── data/
-│   └── .vault                    # Encrypted local storage file (auto-generated)
-├── CMakeLists.txt
-├── .gitignore
-└── README.md
-```
-
----
-
-## OOP & C++ Concepts Used
-
-This project is intentionally designed to demonstrate the following C++ and software engineering concepts:
-
-| Concept | Where It Appears |
-|---|---|
-| **Structs** | `Credential` — lightweight data holder for userId + password |
-| **Classes** | `Account`, `Manager`, `FileStorage`, `AESEncryptor` |
-| **Abstract Classes** | `IStorage`, `IEncryptor` — pure virtual interfaces |
-| **Polymorphism** | `Manager` operates on `IStorage*` and `IEncryptor*` — swappable implementations |
-| **Encapsulation** | Private members with controlled access in all core classes |
-| **Inheritance** | `FileStorage : IStorage`, `AESEncryptor : IEncryptor` |
-| **RAII** | File handles and resources managed with scope-based lifetimes |
-| **Templates** | Utility helpers for serialization |
-| **Error Handling** | Custom exceptions with clear error messages |
-| **STL Containers** | `std::map`, `std::vector`, `std::string` throughout |
-
----
 
 ## Encryption Design
 
