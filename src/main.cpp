@@ -3,13 +3,17 @@
 #include <vector>
 #include "Manager.h"
 
+using std::cout;
+using std::endl;
+using std::string;
+
 void printHelp() {
-    std::cout << "Available commands:" << std::endl;
-    std::cout << "  create [accountName] [accountPassword] - Create a new account" << std::endl;
-    std::cout << "  delete [accountName] [accountPassword] - Delete an existing account" << std::endl;
-    std::cout << "  add [accountName] [accountPassword] [username] [password] - Add a password for a user" << std::endl;
-    std::cout << "  remove [accountName] [accountPassword] [username] - Remove a password for a user" << std::endl;
-    std::cout << "  view [accountName] [accountPassword] - View all passwords for the account" << std::endl;
+    cout << "Available commands:" << endl;
+    cout << "  create [accountName] [accountPassword] - Create a new account" << endl;
+    cout << "  delete [accountName] [accountPassword] - Delete an existing account" << endl;
+    cout << "  add [accountName] [accountPassword] [username] [password] - Add a password for a user" << endl;
+    cout << "  remove [accountName] [accountPassword] [username] - Remove a password for a user" << endl;
+    cout << "  view [accountName] [accountPassword] - View all passwords for the account" << endl;
 }
 
 int main(int argc, char* argv[]) {
@@ -20,19 +24,19 @@ int main(int argc, char* argv[]) {
     }
 
     for(int i = 0; i < argc; i++){
-        std::cout << "Argument " << i << ": " << argv[i] << std::endl;
+        cout<< "Argument " << i << ": " << argv[i] << endl;
     }
 
     PasswordManager mgr;
-    std::string command = argv[1];
-    std::string acountName = argv[2];
-    std::string accountPassword = argv[3];
+    string command = argv[1];
+    string acountName = argv[2];
+    string accountPassword = argv[3];
 
     
 
     // check if the command is valid
     if(command != "create" && command != "delete" && command != "add" && command != "remove" && command != "view"){
-        std::cout << "Invalid command: " << command << std::endl;
+        cout << "Invalid command: " << command << endl;
         printHelp();
         return 1;
     }
@@ -41,61 +45,61 @@ int main(int argc, char* argv[]) {
     }
     else if(command == "create"){
         if (argc != 4) {
-            std::cout << "Invalid number of arguments for create command" << std::endl;
+            cout << "Invalid number of arguments for create command" << endl;
             printHelp();
             return 1;
         }
         mgr.createAccount(acountName, accountPassword);
-        std::cout << "Account created successfully!" << std::endl;
+        cout << "Account created successfully!" << endl;
     }
     else if(command == "delete"){
         if (argc != 4) {
-            std::cout << "Invalid number of arguments for create command" << std::endl;
+            cout << "Invalid number of arguments for create command" << endl;
             printHelp();
             return 1;
         }
         bool x = mgr.deleteAccount(acountName, accountPassword);
         if(x){
-            std::cout << "Account deleted successfully!" << std::endl;
+            cout << "Account deleted successfully!" << endl;
         }
         else{
-            std::cout << "Account deletion failed or Account not found!" << std::endl;
+            cout << "Account deletion failed or Account not found!" << endl;
         }
     }
     else if(command == "add"){
         if (argc != 6) {
-            std::cout << "Invalid number of arguments for create command" << std::endl;
+            cout << "Invalid number of arguments for create command" << endl;
             printHelp();
             return 1;
         }
-        std::string username = argv[4];
-        std::string password = argv[5];
+        string username = argv[4];
+        string password = argv[5];
         mgr.addPassword(acountName, accountPassword, username, password);
     }
     else if(command == "remove"){
         if (argc != 5) {
-            std::cout << "Invalid number of arguments for create command" << std::endl;
+            cout << "Invalid number of arguments for create command" << endl;
             printHelp();
             return 1;
         }
-        std::string username = argv[4];
+        string username = argv[4];
         bool x = mgr.deletePassword(acountName, accountPassword, username);
         if(x){
-            std::cout << "Password deleted successfully!" << std::endl;
+            cout << "Password deleted successfully!" << endl;
         }
         else{
-            std::cout << "Password deletion failed or Password not found!" << std::endl;
+            cout << "Password deletion failed or Password not found!" << endl;
         }
     }
     else if(command == "view"){
         if (argc != 5) {
-            std::cout << "Invalid number of arguments for view command" << std::endl;
+            cout << "Invalid number of arguments for view command" << endl;
             printHelp();
             return 1;
         }
         bool x = mgr.viewPasswords(acountName, accountPassword, acountName);
         if(!x){
-            std::cout << "Failed to view passwords!" << std::endl;
+            cout << "Failed to view passwords!" << endl;
         }
     }
 
