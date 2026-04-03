@@ -4,21 +4,17 @@
 #include <string>
 using std::string;
 
-
 class Account {
     // an abstract class that will represent an account
 public:
-    virtual void encryptPassword(string pass) = 0;
-    virtual void decryptPassword(string pass) = 0;
+    virtual string encryptPassword(string pass) = 0;
+    virtual string decryptPassword(string pass) = 0;
 
-    virtual void saveToFile() = 0;
-    virtual void loadFromFile() = 0;
+    virtual bool validateAccountPassword(string pass) = 0;
 
-    virtual bool validatePassword(string pass) = 0;
-
-    virtual void addPassword(string user, string pass) = 0;
-    virtual void deletePassword(string user) = 0;
-    virtual void viewPassword(string user) = 0;
+    virtual bool addPassword(string userPassword,string id,string idPassword)=0;
+    virtual bool deletePassword(string userPassword,string id) = 0;  
+    virtual bool viewPassword(string userPassword,string id) = 0; 
 };
 
 #endif
