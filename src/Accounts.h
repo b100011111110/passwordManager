@@ -15,6 +15,8 @@ public:
     virtual bool addPassword(string userPassword,string id,string idPassword)=0;
     virtual bool deletePassword(string userPassword,string id) = 0;  
     virtual bool viewPassword(string userPassword,string id) = 0; 
+
+    virtual ~Account() = default;
 };
 
 #endif
