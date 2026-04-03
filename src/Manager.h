@@ -4,6 +4,10 @@
 #include <iostream>
 #include <string>
 
+using std::string;
+using std::cout;
+using std::endl;
+
 class PasswordManager {
 public:
     
@@ -17,27 +21,27 @@ public:
         passwords
     */
 
-    void createAccount(std::string accName, std::string accPass) {
-        std::cout << "Creating account: " << accName << " with password: " << accPass << std::endl;
+    void createAccount(string accName, string accPass) {
+        cout << "Creating account: " << accName << " with password: " << accPass << endl;
     }
 
-    bool deleteAccount(std::string accName, std::string accPass) {
-        std::cout << "Deleting account: " << accName << std::endl;
+    bool deleteAccount(string accName, string accPass) {
+        cout << "Deleting account: " << accName << endl;
         return true; 
     }
 
-    void addPassword(std::string accName, std::string accPass, std::string user, std::string pass) {
-        std::cout << "Adding password for user: " << user << std::endl;
+    void addPassword(string accName, string accPass, string user, string pass) {
+        cout << "Adding password for user: " << user << endl;
         return;
     }
 
-    bool deletePassword(std::string accName, std::string accPass, std::string user) {
-        std::cout << "Deleting password for user: " << user << std::endl;
+    bool deletePassword(string accName, string accPass, string user) {
+        cout << "Deleting password for user: " << user << endl;
         return true;
     }
 
-    bool viewPasswords(std::string accName, std::string accPass,std::string user) {
-        std::cout << "Viewing passwords for user: " << user << std::endl;
+    bool viewPasswords(string accName, string accPass,string user) {
+        cout << "Viewing passwords for user: " << user << endl;
         return true;
     }
 
