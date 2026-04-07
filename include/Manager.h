@@ -31,6 +31,8 @@ public:
 
     bool viewPasswords(string accName, string accPass,string user);
 
+    ~PasswordManager() = default;
+
     // We will add the rest of the methods in Stage 2
 };
 

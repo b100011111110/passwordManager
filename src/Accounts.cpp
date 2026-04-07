@@ -1,6 +1,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <fstream>
 #include "encryption.h"
 
 #include "Accounts.h"
@@ -9,6 +10,9 @@ using std::vector;
 using std::string;
 using std::cout;
 using std::endl;
+using std::ofstream;
+using std::ifstream;
+using std::getline;
 
 
 class LocalAccount : public Account {
@@ -30,8 +34,11 @@ public:
         this->filePath = file;
         this->encryptionKey = pass;
         this->encryptionStandard = type;
+        loadVault();
     }
     
+    virtual ~LocalAccount();
+
     bool validateAccountPassword(string pass) override {
         return pass == this->password;
     }
@@ -86,4 +93,31 @@ public:
         return false; // ID not found
     }
 
+private:
+    void saveVault();
+    void loadVault();
 };
+
+LocalAccount::~LocalAccount() {
+    saveVault();
+}
+
+void LocalAccount::saveVault() {
+    ofstream out(filePath);
+    if (!out) return;
+    for (const auto& entry : vault) {
+        out << entry << endl;
+    }
+}
+
+void LocalAccount::loadVault() {
+    ifstream in(filePath);
+    if (!in) return;
+    string line;
+    vault.clear();
+    while (getline(in, line)) {
+        if (!line.empty()) {
+            vault.push_back(line);
+        }
+    }
+}
