@@ -5,6 +5,12 @@
 #include <openssl/err.h>
 #include <openssl/bio.h>
 #include <openssl/buffer.h>
+#include <stdexcept>
+#include <sstream>
+#include <iomanip>
+#include <vector>
+#include <algorithm>
+#include <cstring>
 
 using std::string;
 
