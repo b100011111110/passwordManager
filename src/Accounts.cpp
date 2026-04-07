@@ -24,11 +24,11 @@ class LocalAccount : public Account {
     vector<string> vault;
 public:
     string username;
-    LocalAccount(string user, string pass, string file, string key, Encryption* type) {
+    LocalAccount(string user, string pass, string file, Encryption* type) {
         this->username = user;
         this->password = pass;
         this->filePath = file;
-        this->encryptionKey = key;
+        this->encryptionKey = pass;
         this->encryptionStandard = type;
     }
     
