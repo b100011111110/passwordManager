@@ -28,12 +28,8 @@ class LocalAccount : public Account {
     vector<string> vault;
 public:
     string username;
-    LocalAccount(string user, string pass, string file, Encryption* type) {
-        this->username = user;
-        this->password = pass;
-        this->filePath = file;
-        this->encryptionKey = pass;
-        this->encryptionStandard = type;
+    LocalAccount(string user, string pass, string file, Encryption* type)
+        : username(user), password(pass), filePath(file), encryptionKey(pass), encryptionStandard(type) {
         loadVault();
     }
     
