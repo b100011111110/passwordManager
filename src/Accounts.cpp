@@ -37,14 +37,14 @@ public:
     }
 
     string encryptPassword(string pass) override {
-        if (this->encryptionStandard == nullptr) return;
+        if (this->encryptionStandard == nullptr) return "";
         string encryptedPass = this->encryptionStandard->encrypt(pass, this->encryptionKey);
         return encryptedPass;
     }
 
     string decryptPassword(string pass) override {
         // Implement decryption logic here
-        if (this->encryptionStandard == nullptr) return;
+        if (this->encryptionStandard == nullptr) return "";
         string decryptedPass = this->encryptionStandard->decrypt(pass, this->encryptionKey);
         return decryptedPass;
     }

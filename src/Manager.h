@@ -21,29 +21,15 @@ public:
         passwords
     */
 
-    void createAccount(string accName, string accPass) {
-        cout << "Creating account: " << accName << " with password: " << accPass << endl;
-    }
+    void createAccount(string accName, string accPass);
 
-    bool deleteAccount(string accName, string accPass) {
-        cout << "Deleting account: " << accName << endl;
-        return true; 
-    }
+    bool deleteAccount(string accName, string accPass);
 
-    void addPassword(string accName, string accPass, string user, string pass) {
-        cout << "Adding password for user: " << user << endl;
-        return;
-    }
+    void addPassword(string accName, string accPass, string user, string pass);
 
-    bool deletePassword(string accName, string accPass, string user) {
-        cout << "Deleting password for user: " << user << endl;
-        return true;
-    }
+    bool deletePassword(string accName, string accPass, string user);
 
-    bool viewPasswords(string accName, string accPass,string user) {
-        cout << "Viewing passwords for user: " << user << endl;
-        return true;
-    }
+    bool viewPasswords(string accName, string accPass,string user);
 
     // We will add the rest of the methods in Stage 2
 };
