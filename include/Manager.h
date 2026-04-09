@@ -33,7 +33,7 @@ public:
         view passwords
     */
 
-    void createAccount(string accName, string accPass);
+    bool createAccount(string accName, string accPass);
 
     bool deleteAccount(string accName, string accPass);
 

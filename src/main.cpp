@@ -52,8 +52,9 @@ int main(int argc, char* argv[]) {
             printHelp();
             return 1;
         }
-        mgr.createAccount(acountName, accountPassword);
-        cout << "Account created successfully!" << endl;
+        if (mgr.createAccount(acountName, accountPassword)) {
+            cout << "Account created successfully!" << endl;
+        }
     }
     else if(command == "delete"){
         if (argc != 4) {

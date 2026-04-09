@@ -53,10 +53,10 @@ PasswordManager::~PasswordManager() {
     accounts.clear();
 }
 
-void PasswordManager::createAccount(string accName, string accPass) {
+bool PasswordManager::createAccount(string accName, string accPass) {
     if (accounts.find(accName) != accounts.end()) {
         cout << "Account already exists." << endl;
-        return;
+        return false;
     }
     string filename = accName + ".json";
     Account* newAccount = createLocalAccount(accName, accPass, filename, encryptionStandard);
@@ -73,6 +73,7 @@ void PasswordManager::createAccount(string accName, string accPass) {
     out << accountsData.dump(4);
 
     cout << "Account created." << endl;
+    return true;
 }
 
 bool PasswordManager::deleteAccount(string accName, string accPass) {
