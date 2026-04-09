@@ -1,6 +1,9 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <cstdio>
+#include <termios.h>
+#include <unistd.h>
 #include "Manager.h"
 #include "encryption.h"
 
@@ -9,13 +12,59 @@ using std::endl;
 using std::string;
 using std::cin;
 
+// Function to read password with hidden input (asterisks shown in real-time)
+string readPasswordHidden() {
+    string password;
+    char ch;
+
+    // Flush output buffer to ensure prompt is displayed
+    cout.flush();
+    fflush(stdout);
+
+    // Get current terminal settings
+    termios oldt, newt;
+    tcgetattr(STDIN_FILENO, &oldt);
+    newt = oldt;
+
+    // Disable echo and set non-canonical mode
+    newt.c_lflag &= ~(ECHO | ICANON);
+    newt.c_cc[VMIN] = 1;
+    newt.c_cc[VTIME] = 0;
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+
+    // Read password character by character
+    while (read(STDIN_FILENO, &ch, 1) == 1) {
+        if (ch == '\n') {
+            break;
+        }
+        if (ch == '\b' || ch == 127) {  // Backspace or DEL
+            if (!password.empty()) {
+                password.pop_back();
+                cout << "\b \b";
+                cout.flush();
+            }
+        } else {
+            password += ch;
+            cout << "*";
+            cout.flush();
+        }
+    }
+
+    cout << endl;
+
+    // Restore terminal settings
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+
+    return password;
+}
+
 void printHelp() {
     cout << "Available commands:" << endl;
-    cout << "  create [accountName] [accountPassword] - Create a new account" << endl;
-    cout << "  delete [accountName] [accountPassword] - Delete an existing account" << endl;
-    cout << "  add [accountName] [accountPassword] [username] [password] - Add a password for a user" << endl;
-    cout << "  remove [accountName] [accountPassword] [username] - Remove a password for a user" << endl;
-    cout << "  view [accountName] [accountPassword] [username] - View password for a user" << endl;
+    cout << "  create [accountName] - Create a new account (password will be prompted)" << endl;
+    cout << "  delete [accountName] - Delete an existing account (password will be prompted)" << endl;
+    cout << "  add [accountName] [username] - Add a password for a user (passwords will be prompted)" << endl;
+    cout << "  remove [accountName] [username] - Remove a password for a user (account password will be prompted)" << endl;
+    cout << "  view [accountName] [username] - View password for a user (account password will be prompted)" << endl;
     cout << "  config encryption [aes|rsa|des] - Set encryption type" << endl;
 }
 
@@ -24,10 +73,6 @@ int main(int argc, char* argv[]) {
     if (argc < 2) {
         printHelp();
         return 1;
-    }
-
-    for(int i = 0; i < argc; i++){
-        cout<< "Argument " << i << ": " << argv[i] << endl;
     }
 
     // Load encryption type from config and create appropriate encryption object
@@ -49,11 +94,14 @@ int main(int argc, char* argv[]) {
         printHelp();
     }
     else if(command == "create"){
-        if (argc != 4) {
-            cout << "Invalid number of arguments for create command" << endl;
-            printHelp();
+        if (argc != 3) {
+            cout << "Usage: passwordManager create [accountName]" << endl;
             return 1;
         }
+
+        // Prompt for password
+        cout << "Enter account password: ";
+        accountPassword = readPasswordHidden();
 
         // Prompt for encryption type
         cout << "Select encryption type:" << endl;
@@ -63,7 +111,7 @@ int main(int argc, char* argv[]) {
         cout << "Enter choice (1-3): ";
 
         string choice;
-        std::getline(cin, choice);
+        std::getline(std::cin, choice);
 
         string encType;
         if (choice == "1") {
@@ -82,11 +130,15 @@ int main(int argc, char* argv[]) {
         }
     }
     else if(command == "delete"){
-        if (argc != 4) {
-            cout << "Invalid number of arguments for create command" << endl;
-            printHelp();
+        if (argc != 3) {
+            cout << "Usage: passwordManager delete [accountName]" << endl;
             return 1;
         }
+
+        // Prompt for password
+        cout << "Enter account password: ";
+        accountPassword = readPasswordHidden();
+
         bool x = mgr.deleteAccount(acountName, accountPassword);
         if(x){
             cout << "Account deleted successfully!" << endl;
@@ -96,22 +148,34 @@ int main(int argc, char* argv[]) {
         }
     }
     else if(command == "add"){
-        if (argc != 6) {
-            cout << "Invalid number of arguments for create command" << endl;
-            printHelp();
+        if (argc != 4) {
+            cout << "Usage: passwordManager add [accountName] [username]" << endl;
             return 1;
         }
-        string username = argv[4];
-        string password = argv[5];
+
+        string username = argv[3];
+
+        // Prompt for account password
+        cout << "Enter account password: ";
+        accountPassword = readPasswordHidden();
+
+        // Prompt for user password
+        cout << "Enter password for user '" << username << "': ";
+        string password = readPasswordHidden();
+
         mgr.addPassword(acountName, accountPassword, username, password);
     }
     else if(command == "remove"){
-        if (argc != 5) {
-            cout << "Invalid number of arguments for create command" << endl;
-            printHelp();
+        if (argc != 4) {
+            cout << "Usage: passwordManager remove [accountName] [username]" << endl;
             return 1;
         }
-        string username = argv[4];
+        string username = argv[3];
+
+        // Prompt for account password
+        cout << "Enter account password: ";
+        accountPassword = readPasswordHidden();
+
         bool x = mgr.deletePassword(acountName, accountPassword, username);
         if(x){
             cout << "Password deleted successfully!" << endl;
@@ -121,12 +185,16 @@ int main(int argc, char* argv[]) {
         }
     }
     else if(command == "view"){
-        if (argc != 5) {
-            cout << "Invalid number of arguments for view command" << endl;
-            printHelp();
+        if (argc != 4) {
+            cout << "Usage: passwordManager view [accountName] [username]" << endl;
             return 1;
         }
-        string username = argv[4];
+        string username = argv[3];
+
+        // Prompt for account password
+        cout << "Enter account password: ";
+        accountPassword = readPasswordHidden();
+
         bool x = mgr.viewPasswords(acountName, accountPassword, username);
         if(!x){
             cout << "Failed to view passwords!" << endl;
