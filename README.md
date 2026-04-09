@@ -92,49 +92,90 @@ Account deleted.
 
 ## Encryption Design
 
-- Account passwords are never stored directly. They are passed through a **key derivation function (KDF)** to produce an encryption key.
-- All stored data is encrypted using **AES-256** (via OpenSSL or a lightweight bundled library).
-- The storage file (`.vault`) is written in a **binary encrypted format** — it is unreadable without the correct account password.
-- Each account is independently encrypted — compromising one account does not expose others.
+### Full-File Encryption
+- **Complete vault protection**: The entire vault file (containing all IDs and passwords) is encrypted as a single unit using the account password as the encryption key.
+- **ID protection**: Credential IDs (like `sh1:xxxx...`) are encrypted along with their passwords — not stored in plain text.
+- **Metadata encryption**: Account information is stored in an encrypted `accounts.init` file using a master key.
+
+### Encryption Mechanism
+- Account passwords are passed through a **key derivation function (KDF)** to produce an encryption key.
+- All vault data is serialized to **JSON format**, then encrypted using your selected algorithm:
+  - **AES-256** (default, recommended) — via OpenSSL EVP interface
+  - **RSA** — public-key encryption with OAEP padding
+  - **DES** — legacy 3DES support
+- The vault file (e.g., `273bb8988bc9eff3f945e81f4f9caee5d8e67d785b4078773e39ca84fc99f9b6.json`) is written in **pure binary encrypted format** — completely unreadable without the correct account password.
+- Each account is independently encrypted — compromising one account's password does not expose others.
+
+### File Structure
+```
+accounts.init          (encrypted account metadata with id1 identifiers)
+<hashed-filename>.json (encrypted vault containing all credentials)
+config.json            (unencrypted encryption type preference)
+```
 
 > ⚠️ If you forget your account password, your stored credentials **cannot be recovered**. There is no backdoor by design.
 
-### Prerequisites
+---
+
+## Prerequisites
 
 - C++17 or later
-- CMake 3.15+
-- OpenSSL (for AES encryption)
+- CMake 3.10+
+- OpenSSL (for encryption)
+- nlohmann/json (for JSON handling)
 
-### Building
+## Building
 
 ```bash
-git clone https://github.com/yourusername/passwordMgr.git
-cd passwordMgr
-mkdir build && cd build
+cd /home/neo/Desktop/passwordManager
+mkdir -p build && cd build
 cmake ..
 make
 ```
 
-### Running
+The executable will be at `build/passwordManager`.
+
+## Running
 
 ```bash
-./passwordMgr add-account myVault myMasterPass123
-```
+# Create a new account
+./build/passwordManager create myAccount
 
-### Running Tests
+# Add a credential
+./build/passwordManager add myAccount myId
 
-```bash
-cd build
-ctest --output-on-failure
+# View a credential
+./build/passwordManager view myAccount myId
+
+# Remove a credential
+./build/passwordManager remove myAccount myId
+
+# Delete account
+./build/passwordManager delete myAccount
 ```
 
 ---
 
 ## Security Notes
 
-- Passwords are **never logged** or printed to stdout beyond explicit `fetch-password` calls.
-- The vault file is stored at a configurable path (default: `~/.passwordMgr/.vault`).
-- This project is intended as a **learning tool and personal utility**. For production use, consider auditing the cryptographic implementation.
+- **Passwords are never logged** or printed to stdout beyond explicit `view` commands.
+- **Credential IDs are encrypted** in the vault file alongside their passwords.
+- **Account metadata is encrypted** in `accounts.init`, including any associated identifiers like `id1`.
+- **Full-file encryption** ensures the entire vault is encrypted as a single unit — no component is readable without the correct password.
+- Vault files are stored with **restrictive file permissions (0600)** — only the owner can read/write.
+- This project is intended as a **learning tool and personal utility**. For production use, consider auditing the cryptographic implementation and conducting a security audit.
+
+---
+
+## Recent Changes
+
+### v2.0 (Current)
+- ✓ **Full vault file encryption** — entire vault is encrypted, not just individual passwords
+- ✓ **ID encryption** — credential IDs (including those with colons like `sh1:xxxx`) are encrypted
+- ✓ **Encrypted metadata** — account information with `id1` identifiers is encrypted in `accounts.init`
+- ✓ **Fixed segmentation fault** — proper cleanup of encryption objects
+- ✓ **Multiple encryption algorithms** — AES (default), RSA, and DES support
+- ✓ **Hashed vault filenames** — account vault files use SHA256 hashed names for privacy
 
 ---
 
