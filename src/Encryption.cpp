@@ -83,247 +83,238 @@ static inline string base64Decode(const string& b64) {
     return string(buffer.data(), len);
 }
 
-class AESEncryption : public Encryption {
-public:
-    string encrypt(const string& data, const string& key) override {
-        if (key.empty()) {
-            throw std::invalid_argument("AES key is empty");
-        }
-
-        unsigned char aesKey[32]; // AES-256
-        unsigned char aesIv[16];
-
-        if (!EVP_BytesToKey(EVP_aes_256_cbc(), EVP_sha256(), nullptr,
-                            reinterpret_cast<const unsigned char*>(key.data()),
-                            static_cast<int>(key.size()), 1,
-                            aesKey, aesIv)) {
-            throw std::runtime_error("EVP_BytesToKey failed");
-        }
-
-        EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
-        if (!ctx) {
-            throw std::runtime_error("EVP_CIPHER_CTX_new failed");
-        }
-
-        ensureOpensslSuccess(EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), nullptr, aesKey, aesIv) == 1,
-                             "EVP_EncryptInit_ex");
-
-        string cipher;
-        cipher.resize(data.size() + EVP_CIPHER_block_size(EVP_aes_256_cbc()));
-
-        int outLen1 = 0;
-        ensureOpensslSuccess(EVP_EncryptUpdate(ctx,
-                                              reinterpret_cast<unsigned char*>(&cipher[0]),
-                                              &outLen1,
-                                              reinterpret_cast<const unsigned char*>(data.data()),
-                                              static_cast<int>(data.size())) == 1,
-                             "EVP_EncryptUpdate");
-
-        int outLen2 = 0;
-        ensureOpensslSuccess(EVP_EncryptFinal_ex(ctx,
-                                                 reinterpret_cast<unsigned char*>(&cipher[0]) + outLen1,
-                                                 &outLen2) == 1,
-                             "EVP_EncryptFinal_ex");
-
-        EVP_CIPHER_CTX_free(ctx);
-
-        cipher.resize(outLen1 + outLen2);
-        string ivStr(reinterpret_cast<char*>(aesIv), sizeof(aesIv));
-
-        return toHex(ivStr + cipher);
+string AESEncryption::encrypt(const string& data, const string& key) {
+    if (key.empty()) {
+        throw std::invalid_argument("AES key is empty");
     }
 
-    string decrypt(const string& data, const string& key) override {
-        if (key.empty()) {
-            throw std::invalid_argument("AES key is empty");
-        }
+    unsigned char aesKey[32]; // AES-256
+    unsigned char aesIv[16];
 
-        string encrypted = fromHex(data);
-        if (encrypted.size() < 16) {
-            throw std::invalid_argument("Encrypted data too short");
-        }
-
-        unsigned char aesKey[32];
-        unsigned char aesIv[16];
-        std::memcpy(aesIv, encrypted.data(), 16);
-        string cipher = encrypted.substr(16);
-
-        if (!EVP_BytesToKey(EVP_aes_256_cbc(), EVP_sha256(), nullptr,
-                            reinterpret_cast<const unsigned char*>(key.data()),
-                            static_cast<int>(key.size()), 1,
-                            aesKey, aesIv)) {
-            throw std::runtime_error("EVP_BytesToKey failed");
-        }
-
-        EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
-        if (!ctx) {
-            throw std::runtime_error("EVP_CIPHER_CTX_new failed");
-        }
-
-        ensureOpensslSuccess(EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), nullptr, aesKey, aesIv) == 1,
-                             "EVP_DecryptInit_ex");
-
-        string plaintext;
-        plaintext.resize(cipher.size());
-
-        int outLen1 = 0;
-        ensureOpensslSuccess(EVP_DecryptUpdate(ctx,
-                                              reinterpret_cast<unsigned char*>(&plaintext[0]),
-                                              &outLen1,
-                                              reinterpret_cast<const unsigned char*>(cipher.data()),
-                                              static_cast<int>(cipher.size())) == 1,
-                             "EVP_DecryptUpdate");
-
-        int outLen2 = 0;
-        ensureOpensslSuccess(EVP_DecryptFinal_ex(ctx,
-                                                 reinterpret_cast<unsigned char*>(&plaintext[0]) + outLen1,
-                                                 &outLen2) == 1,
-                             "EVP_DecryptFinal_ex");
-
-        EVP_CIPHER_CTX_free(ctx);
-        plaintext.resize(outLen1 + outLen2);
-        return plaintext;
-    }
-};
-
-class RSAEncryption : public Encryption {
-public:
-    string encrypt(const string& data, const string& key) override {
-        BIO* bio = BIO_new_mem_buf(key.data(), static_cast<int>(key.size()));
-        if (!bio) {
-            throw std::runtime_error("Failed to create BIO for RSA public key");
-        }
-
-        RSA* rsa = PEM_read_bio_RSA_PUBKEY(bio, nullptr, nullptr, nullptr);
-        BIO_free(bio);
-        if (!rsa) {
-            throw std::runtime_error("Failed to load RSA public key");
-        }
-
-        int rsaSize = RSA_size(rsa);
-        std::vector<unsigned char> out(rsaSize);
-        int encryptedLen = RSA_public_encrypt(static_cast<int>(data.size()),
-                                              reinterpret_cast<const unsigned char*>(data.data()),
-                                              out.data(), rsa, RSA_PKCS1_OAEP_PADDING);
-        RSA_free(rsa);
-
-        if (encryptedLen <= 0) {
-            throw std::runtime_error("RSA_public_encrypt failed");
-        }
-
-        return base64Encode(string(reinterpret_cast<char*>(out.data()), encryptedLen));
+    if (!EVP_BytesToKey(EVP_aes_256_cbc(), EVP_sha256(), nullptr,
+                        reinterpret_cast<const unsigned char*>(key.data()),
+                        static_cast<int>(key.size()), 1,
+                        aesKey, aesIv)) {
+        throw std::runtime_error("EVP_BytesToKey failed");
     }
 
-    string decrypt(const string& data, const string& key) override {
-        string bin = base64Decode(data);
-
-        BIO* bio = BIO_new_mem_buf(key.data(), static_cast<int>(key.size()));
-        if (!bio) {
-            throw std::runtime_error("Failed to create BIO for RSA private key");
-        }
-
-        RSA* rsa = PEM_read_bio_RSAPrivateKey(bio, nullptr, nullptr, nullptr);
-        BIO_free(bio);
-        if (!rsa) {
-            throw std::runtime_error("Failed to load RSA private key");
-        }
-
-        int rsaSize = RSA_size(rsa);
-        std::vector<unsigned char> out(rsaSize);
-        int decryptedLen = RSA_private_decrypt(static_cast<int>(bin.size()),
-                                               reinterpret_cast<const unsigned char*>(bin.data()),
-                                               out.data(), rsa, RSA_PKCS1_OAEP_PADDING);
-        RSA_free(rsa);
-
-        if (decryptedLen <= 0) {
-            throw std::runtime_error("RSA_private_decrypt failed");
-        }
-
-        return string(reinterpret_cast<char*>(out.data()), decryptedLen);
-    }
-};
-
-class DESEncryption : public Encryption {
-public:
-    string encrypt(const string& data, const string& key) override {
-        if (key.empty()) {
-            throw std::invalid_argument("DES key is empty");
-        }
-
-        unsigned char desKey[8] = {0};
-        unsigned char desIv[8] = {0};
-        std::memcpy(desKey, key.data(), std::min<size_t>(key.size(), 8));
-        std::memcpy(desIv, key.data(), std::min<size_t>(key.size(), 8));
-
-        EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
-        if (!ctx) {
-            throw std::runtime_error("EVP_CIPHER_CTX_new failed");
-        }
-
-        ensureOpensslSuccess(EVP_EncryptInit_ex(ctx, EVP_des_cbc(), nullptr, desKey, desIv) == 1,
-                             "EVP_EncryptInit_ex");
-
-        string cipher;
-        cipher.resize(data.size() + EVP_CIPHER_block_size(EVP_des_cbc()));
-
-        int outLen1 = 0;
-        ensureOpensslSuccess(EVP_EncryptUpdate(ctx,
-                                              reinterpret_cast<unsigned char*>(&cipher[0]),
-                                              &outLen1,
-                                              reinterpret_cast<const unsigned char*>(data.data()),
-                                              static_cast<int>(data.size())) == 1,
-                             "EVP_EncryptUpdate");
-
-        int outLen2 = 0;
-        ensureOpensslSuccess(EVP_EncryptFinal_ex(ctx,
-                                                 reinterpret_cast<unsigned char*>(&cipher[0]) + outLen1,
-                                                 &outLen2) == 1,
-                             "EVP_EncryptFinal_ex");
-
-        EVP_CIPHER_CTX_free(ctx);
-        cipher.resize(outLen1 + outLen2);
-        return base64Encode(cipher);
+    EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+    if (!ctx) {
+        throw std::runtime_error("EVP_CIPHER_CTX_new failed");
     }
 
-    string decrypt(const string& data, const string& key) override {
-        if (key.empty()) {
-            throw std::invalid_argument("DES key is empty");
-        }
+    ensureOpensslSuccess(EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), nullptr, aesKey, aesIv) == 1,
+                         "EVP_EncryptInit_ex");
 
-        string cipher = base64Decode(data);
+    string cipher;
+    cipher.resize(data.size() + EVP_CIPHER_block_size(EVP_aes_256_cbc()));
 
-        unsigned char desKey[8] = {0};
-        unsigned char desIv[8] = {0};
-        std::memcpy(desKey, key.data(), std::min<size_t>(key.size(), 8));
-        std::memcpy(desIv, key.data(), std::min<size_t>(key.size(), 8));
+    int outLen1 = 0;
+    ensureOpensslSuccess(EVP_EncryptUpdate(ctx,
+                                          reinterpret_cast<unsigned char*>(&cipher[0]),
+                                          &outLen1,
+                                          reinterpret_cast<const unsigned char*>(data.data()),
+                                          static_cast<int>(data.size())) == 1,
+                         "EVP_EncryptUpdate");
 
-        EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
-        if (!ctx) {
-            throw std::runtime_error("EVP_CIPHER_CTX_new failed");
-        }
+    int outLen2 = 0;
+    ensureOpensslSuccess(EVP_EncryptFinal_ex(ctx,
+                                             reinterpret_cast<unsigned char*>(&cipher[0]) + outLen1,
+                                             &outLen2) == 1,
+                         "EVP_EncryptFinal_ex");
 
-        ensureOpensslSuccess(EVP_DecryptInit_ex(ctx, EVP_des_cbc(), nullptr, desKey, desIv) == 1,
-                             "EVP_DecryptInit_ex");
+    EVP_CIPHER_CTX_free(ctx);
 
-        string plaintext;
-        plaintext.resize(cipher.size());
+    cipher.resize(outLen1 + outLen2);
+    string ivStr(reinterpret_cast<char*>(aesIv), sizeof(aesIv));
 
-        int outLen1 = 0;
-        ensureOpensslSuccess(EVP_DecryptUpdate(ctx,
-                                              reinterpret_cast<unsigned char*>(&plaintext[0]),
-                                              &outLen1,
-                                              reinterpret_cast<const unsigned char*>(cipher.data()),
-                                              static_cast<int>(cipher.size())) == 1,
-                             "EVP_DecryptUpdate");
+    return toHex(ivStr + cipher);
+}
 
-        int outLen2 = 0;
-        ensureOpensslSuccess(EVP_DecryptFinal_ex(ctx,
-                                                 reinterpret_cast<unsigned char*>(&plaintext[0]) + outLen1,
-                                                 &outLen2) == 1,
-                             "EVP_DecryptFinal_ex");
-
-        EVP_CIPHER_CTX_free(ctx);
-        plaintext.resize(outLen1 + outLen2);
-        return plaintext;
+string AESEncryption::decrypt(const string& data, const string& key) {
+    if (key.empty()) {
+        throw std::invalid_argument("AES key is empty");
     }
-};
+
+    string encrypted = fromHex(data);
+    if (encrypted.size() < 16) {
+        throw std::invalid_argument("Encrypted data too short");
+    }
+
+    unsigned char aesKey[32];
+    unsigned char aesIv[16];
+    std::memcpy(aesIv, encrypted.data(), 16);
+    string cipher = encrypted.substr(16);
+
+    if (!EVP_BytesToKey(EVP_aes_256_cbc(), EVP_sha256(), nullptr,
+                        reinterpret_cast<const unsigned char*>(key.data()),
+                        static_cast<int>(key.size()), 1,
+                        aesKey, aesIv)) {
+        throw std::runtime_error("EVP_BytesToKey failed");
+    }
+
+    EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+    if (!ctx) {
+        throw std::runtime_error("EVP_CIPHER_CTX_new failed");
+    }
+
+    ensureOpensslSuccess(EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), nullptr, aesKey, aesIv) == 1,
+                         "EVP_DecryptInit_ex");
+
+    string plaintext;
+    plaintext.resize(cipher.size());
+
+    int outLen1 = 0;
+    ensureOpensslSuccess(EVP_DecryptUpdate(ctx,
+                                          reinterpret_cast<unsigned char*>(&plaintext[0]),
+                                          &outLen1,
+                                          reinterpret_cast<const unsigned char*>(cipher.data()),
+                                          static_cast<int>(cipher.size())) == 1,
+                         "EVP_DecryptUpdate");
+
+    int outLen2 = 0;
+    ensureOpensslSuccess(EVP_DecryptFinal_ex(ctx,
+                                             reinterpret_cast<unsigned char*>(&plaintext[0]) + outLen1,
+                                             &outLen2) == 1,
+                         "EVP_DecryptFinal_ex");
+
+    EVP_CIPHER_CTX_free(ctx);
+    plaintext.resize(outLen1 + outLen2);
+    return plaintext;
+}
+
+string RSAEncryption::encrypt(const string& data, const string& key) {
+    BIO* bio = BIO_new_mem_buf(key.data(), static_cast<int>(key.size()));
+    if (!bio) {
+        throw std::runtime_error("Failed to create BIO for RSA public key");
+    }
+
+    RSA* rsa = PEM_read_bio_RSA_PUBKEY(bio, nullptr, nullptr, nullptr);
+    BIO_free(bio);
+    if (!rsa) {
+        throw std::runtime_error("Failed to load RSA public key");
+    }
+
+    int rsaSize = RSA_size(rsa);
+    std::vector<unsigned char> out(rsaSize);
+    int encryptedLen = RSA_public_encrypt(static_cast<int>(data.size()),
+                                          reinterpret_cast<const unsigned char*>(data.data()),
+                                          out.data(), rsa, RSA_PKCS1_OAEP_PADDING);
+    RSA_free(rsa);
+
+    if (encryptedLen <= 0) {
+        throw std::runtime_error("RSA_public_encrypt failed");
+    }
+
+    return base64Encode(string(reinterpret_cast<char*>(out.data()), encryptedLen));
+}
+
+string RSAEncryption::decrypt(const string& data, const string& key) {
+    string bin = base64Decode(data);
+
+    BIO* bio = BIO_new_mem_buf(key.data(), static_cast<int>(key.size()));
+    if (!bio) {
+        throw std::runtime_error("Failed to create BIO for RSA private key");
+    }
+
+    RSA* rsa = PEM_read_bio_RSAPrivateKey(bio, nullptr, nullptr, nullptr);
+    BIO_free(bio);
+    if (!rsa) {
+        throw std::runtime_error("Failed to load RSA private key");
+    }
+
+    int rsaSize = RSA_size(rsa);
+    std::vector<unsigned char> out(rsaSize);
+    int decryptedLen = RSA_private_decrypt(static_cast<int>(bin.size()),
+                                           reinterpret_cast<const unsigned char*>(bin.data()),
+                                           out.data(), rsa, RSA_PKCS1_OAEP_PADDING);
+    RSA_free(rsa);
+
+    if (decryptedLen <= 0) {
+        throw std::runtime_error("RSA_private_decrypt failed");
+    }
+
+    return string(reinterpret_cast<char*>(out.data()), decryptedLen);
+}
+
+string DESEncryption::encrypt(const string& data, const string& key) {
+    if (key.empty()) {
+        throw std::invalid_argument("DES key is empty");
+    }
+
+    unsigned char desKey[8] = {0};
+    unsigned char desIv[8] = {0};
+    std::memcpy(desKey, key.data(), std::min<size_t>(key.size(), 8));
+    std::memcpy(desIv, key.data(), std::min<size_t>(key.size(), 8));
+
+    EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+    if (!ctx) {
+        throw std::runtime_error("EVP_CIPHER_CTX_new failed");
+    }
+
+    ensureOpensslSuccess(EVP_EncryptInit_ex(ctx, EVP_des_cbc(), nullptr, desKey, desIv) == 1,
+                         "EVP_EncryptInit_ex");
+
+    string cipher;
+    cipher.resize(data.size() + EVP_CIPHER_block_size(EVP_des_cbc()));
+
+    int outLen1 = 0;
+    ensureOpensslSuccess(EVP_EncryptUpdate(ctx,
+                                          reinterpret_cast<unsigned char*>(&cipher[0]),
+                                          &outLen1,
+                                          reinterpret_cast<const unsigned char*>(data.data()),
+                                          static_cast<int>(data.size())) == 1,
+                         "EVP_EncryptUpdate");
+
+    int outLen2 = 0;
+    ensureOpensslSuccess(EVP_EncryptFinal_ex(ctx,
+                                             reinterpret_cast<unsigned char*>(&cipher[0]) + outLen1,
+                                             &outLen2) == 1,
+                         "EVP_EncryptFinal_ex");
+
+    EVP_CIPHER_CTX_free(ctx);
+    cipher.resize(outLen1 + outLen2);
+    return base64Encode(cipher);
+}
+
+string DESEncryption::decrypt(const string& data, const string& key) {
+    if (key.empty()) {
+        throw std::invalid_argument("DES key is empty");
+    }
+
+    string cipher = base64Decode(data);
+
+    unsigned char desKey[8] = {0};
+    unsigned char desIv[8] = {0};
+    std::memcpy(desKey, key.data(), std::min<size_t>(key.size(), 8));
+    std::memcpy(desIv, key.data(), std::min<size_t>(key.size(), 8));
+
+    EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+    if (!ctx) {
+        throw std::runtime_error("EVP_CIPHER_CTX_new failed");
+    }
+
+    ensureOpensslSuccess(EVP_DecryptInit_ex(ctx, EVP_des_cbc(), nullptr, desKey, desIv) == 1,
+                         "EVP_DecryptInit_ex");
+
+    string plaintext;
+    plaintext.resize(cipher.size());
+
+    int outLen1 = 0;
+    ensureOpensslSuccess(EVP_DecryptUpdate(ctx,
+                                          reinterpret_cast<unsigned char*>(&plaintext[0]),
+                                          &outLen1,
+                                          reinterpret_cast<const unsigned char*>(cipher.data()),
+                                          static_cast<int>(cipher.size())) == 1,
+                         "EVP_DecryptUpdate");
+
+    int outLen2 = 0;
+    ensureOpensslSuccess(EVP_DecryptFinal_ex(ctx,
+                                             reinterpret_cast<unsigned char*>(&plaintext[0]) + outLen1,
+                                             &outLen2) == 1,
+                         "EVP_DecryptFinal_ex");
+
+    EVP_CIPHER_CTX_free(ctx);
+    plaintext.resize(outLen1 + outLen2);
+    return plaintext;
+}

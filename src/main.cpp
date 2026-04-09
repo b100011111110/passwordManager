@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include "Manager.h"
+#include "encryption.h"
 
 using std::cout;
 using std::endl;
@@ -27,12 +28,14 @@ int main(int argc, char* argv[]) {
         cout<< "Argument " << i << ": " << argv[i] << endl;
     }
 
-    PasswordManager mgr;
+    AESEncryption aes;
+    PasswordManager mgr(&aes);
+
     string command = argv[1];
     string acountName = argv[2];
     string accountPassword = argv[3];
 
-    
+
 
     // check if the command is valid
     if(command != "create" && command != "delete" && command != "add" && command != "remove" && command != "view"){
@@ -97,7 +100,8 @@ int main(int argc, char* argv[]) {
             printHelp();
             return 1;
         }
-        bool x = mgr.viewPasswords(acountName, accountPassword, acountName);
+        string username = argv[4];
+        bool x = mgr.viewPasswords(acountName, accountPassword, username);
         if(!x){
             cout << "Failed to view passwords!" << endl;
         }

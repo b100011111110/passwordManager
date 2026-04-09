@@ -3,22 +3,34 @@
 
 #include <iostream>
 #include <string>
+#include <map>
+#include <memory>
+#include "Accounts.h"
+#include "encryption.h"
 
 using std::string;
 using std::cout;
 using std::endl;
 
 class PasswordManager {
+private:
+    std::map<string, Account*> accounts;
+    Encryption* encryptionStandard;
+
+    void loadExistingAccounts();
+    void saveAccountMetadata();
+
 public:
-    
+    PasswordManager(Encryption* encryption);
+
     /*
-    this is a class that will manage the password manager, 
-    it will have methods to 
-        create accounts, 
-        delete accounts, 
-        add passwords, 
+    this is a class that will manage the password manager,
+    it will have methods to
+        create accounts,
+        delete accounts,
+        add passwords,
         delete passwords,
-        passwords
+        view passwords
     */
 
     void createAccount(string accName, string accPass);
@@ -29,9 +41,9 @@ public:
 
     bool deletePassword(string accName, string accPass, string user);
 
-    bool viewPasswords(string accName, string accPass,string user);
+    bool viewPasswords(string accName, string accPass, string user);
 
-    ~PasswordManager() = default;
+    ~PasswordManager();
 
     // We will add the rest of the methods in Stage 2
 };

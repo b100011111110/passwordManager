@@ -12,5 +12,22 @@ public:
     virtual ~Encryption() = default;
 };
 
+class AESEncryption : public Encryption {
+public:
+    string encrypt(const string& data, const string& key) override;
+    string decrypt(const string& data, const string& key) override;
+};
+
+class RSAEncryption : public Encryption {
+public:
+    string encrypt(const string& data, const string& key) override;
+    string decrypt(const string& data, const string& key) override;
+};
+
+class DESEncryption : public Encryption {
+public:
+    string encrypt(const string& data, const string& key) override;
+    string decrypt(const string& data, const string& key) override;
+};
 
 #endif // ENCRYPTION_H
