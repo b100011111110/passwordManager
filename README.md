@@ -1,14 +1,14 @@
 # 🔐 Password Manager
 
-> A professional-grade, CLI-based password manager written in modern C++ — built with encryption, clean OOP design, and local-first storage.
+> A professional-grade, CLI-based password manager written in modern C++ — built with full-file encryption, clean OOP design, and local-first storage.
 
 ---
 
 ## Overview
 
-**PasswordMgr** is a command-line password management tool built entirely in C++. It allows users to securely store, retrieve, and manage credentials in encrypted local storage. Each account holds username-password pairs that are encrypted before being written to disk, ensuring your data is never stored in a human-readable format.
+**PasswordManager** is a command-line password management tool built entirely in C++. It allows users to securely store, retrieve, and manage credentials with **full-file encryption**. Each account holds ID-password pairs that are encrypted alongside the entire vault file before being written to disk, ensuring your data is never stored in a human-readable format.
 
-This project is designed as a structured learning journey through professional C++ development — covering object-oriented principles, encryption, file I/O, CLI design.
+This project is designed as a structured learning journey through professional C++ development — covering object-oriented principles, encryption, file I/O, CLI design, and secure data handling.
 
 ---
 
@@ -16,53 +16,77 @@ This project is designed as a structured learning journey through professional C
 
 | Feature | Description |
 |---|---|
-| `add-account` | Create a new named account protected by a master password |
-| `delete-account` | Remove an account and all its stored credentials |
-| `add-password` | Store a username-password pair inside an account |
-| `delete-password` | Remove a specific credential entry from an account |
-| `fetch-password` | Retrieve a stored password for a given user ID |
-| Encryption | All data is encrypted before being written to disk |
+| `create` | Create a new named account protected by a master password |
+| `delete` | Remove an account and all its stored credentials |
+| `add` | Store an ID-password pair inside an account |
+| `remove` | Remove a specific credential entry from an account |
+| `view` | Retrieve and display a stored password for a given ID |
+| **Full-File Encryption** | Entire vault file is encrypted with account password (AES-256) |
+| **Encrypted Metadata** | Account metadata (including `id1` identifiers) is encrypted |
+| Multiple Encryption Types | Support for AES, RSA, and DES encryption algorithms |
 | Local Storage | No cloud, no internet — everything lives on your machine |
-| Unrecognizable Storage Format | The storage file is binary-encrypted and not human-readable |
+| Binary Encryption Format | The storage file is completely encrypted and not human-readable |
 
 ---
 
 ## Usage
 
+### Commands
+
 ```bash
-# Create a new account
-passwordMgr add-account <accountName> <accountPassword>
+# Create a new account (will prompt for password and encryption type)
+./passwordManager create <accountName>
 
-# Delete an existing account
-passwordMgr delete-account <accountName> <accountPassword>
+# Delete an existing account (will prompt for password)
+./passwordManager delete <accountName>
 
-# Add a credential to an account
-passwordMgr add-password <accountName> <accountPassword> <userId> <password>
+# Add a credential to an account (will prompt for passwords)
+./passwordManager add <accountName> <id>
 
-# Delete a credential from an account
-passwordMgr delete-password <accountName> <accountPassword> <userId>
+# Remove a credential from an account (will prompt for password)
+./passwordManager remove <accountName> <id>
 
-# Fetch a credential from an account
-passwordMgr fetch-password <accountName> <accountPassword> <userId>
+# View a stored credential (will prompt for password, then display the password)
+./passwordManager view <accountName> <id>
+
+# Set encryption type for new accounts
+./passwordManager config encryption [aes|rsa|des]
 ```
 
 ### Examples
 
 ```bash
-$ passwordMgr add-account myVault myMasterPass123
-✔ Account 'myVault' created successfully.
+# Create account with AES encryption
+$ ./passwordManager create myVault
+Enter account password: 
+Select encryption type:
+1. AES
+2. RSA
+3. DES
+Enter choice (1-3): 1
+Account created with aes encryption (encrypted vault filename).
+Account created successfully!
 
-$ passwordMgr add-password myVault myMasterPass123 github myGithubPass!
-✔ Password for 'github' added to account 'myVault'.
+# Add a credential with ID
+$ ./passwordManager add myVault "sh1:08c04eef88649ce2811ce0f447509fe30a05b2c6"
+Enter account password: 
+Enter password for user 'sh1:08c04eef88649ce2811ce0f447509fe30a05b2c6': 
+Password added.
 
-$ passwordMgr fetch-password myVault myMasterPass123 github
-✔ Password for 'github': myGithubPass!
+# View the credential
+$ ./passwordManager view myVault "sh1:08c04eef88649ce2811ce0f447509fe30a05b2c6"
+Enter account password: 
+Password for sh1:08c04eef88649ce2811ce0f447509fe30a05b2c6: (displays decrypted password)
 
-$ passwordMgr delete-password myVault myMasterPass123 github
-✔ Password for 'github' deleted from account 'myVault'.
+# Remove a credential
+$ ./passwordManager remove myVault "sh1:08c04eef88649ce2811ce0f447509fe30a05b2c6"
+Enter account password: 
+Password deleted.
 
-$ passwordMgr delete-account myVault myMasterPass123
-✔ Account 'myVault' deleted successfully.
+# Delete entire account
+$ ./passwordManager delete myVault
+Enter account password: 
+Account deleted.
 ```
 
 
