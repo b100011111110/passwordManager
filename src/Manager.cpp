@@ -3,6 +3,10 @@
 #include <fstream>
 #include <algorithm>
 #include <nlohmann/json.hpp>
+#include <sys/stat.h>
+#include <sstream>
+#include <iomanip>
+#include <openssl/sha.h>
 
 using json = nlohmann::json;
 using std::filesystem::exists;
@@ -14,6 +18,44 @@ using std::ofstream;
 
 const string ACCOUNTS_FILE = "accounts.init";
 const string CONFIG_FILE = "config.json";
+
+// Master encryption key for accounts file (in production, derive from master password)
+const string ACCOUNTS_MASTER_KEY = "PasswordManager2024SecureKey!";
+
+// Set restrictive file permissions (0600 = owner read/write only)
+void setSecureFilePermissions(const string& filename) {
+    chmod(filename.c_str(), S_IRUSR | S_IWUSR);  // 0600
+}
+
+// Encrypt accounts data using AES
+string encryptAccountsData(const string& plaintext) {
+    AESEncryption aes;
+    // For accounts file, we use a fixed master key derived from ACCOUNTS_MASTER_KEY
+    string encrypted = aes.encrypt(plaintext, ACCOUNTS_MASTER_KEY);
+    return encrypted;
+}
+
+// Decrypt accounts data using AES
+string decryptAccountsData(const string& ciphertext) {
+    AESEncryption aes;
+    string decrypted = aes.decrypt(ciphertext, ACCOUNTS_MASTER_KEY);
+    return decrypted;
+}
+
+// Generate SHA256 hash of account name for encrypted filename
+string hashAccountName(const string& accountName) {
+    unsigned char hash[SHA256_DIGEST_LENGTH];
+    SHA256_CTX sha256;
+    SHA256_Init(&sha256);
+    SHA256_Update(&sha256, (unsigned char*)accountName.c_str(), accountName.length());
+    SHA256_Final(hash, &sha256);
+
+    std::stringstream ss;
+    for(int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
+        ss << std::hex << std::setw(2) << std::setfill('0') << (int)hash[i];
+    }
+    return ss.str() + ".json";
+}
 
 string getEncryptionTypeFromConfig() {
     if (exists(path(CONFIG_FILE))) {
@@ -63,16 +105,29 @@ PasswordManager::PasswordManager(Encryption* encryption)
     loadExistingAccounts();
 }
 
+string PasswordManager::getEncryptedFilename(const string& accountName) {
+    return hashAccountName(accountName);
+}
+
 void PasswordManager::loadExistingAccounts() {
     if (exists(path(ACCOUNTS_FILE))) {
         try {
-            json accountsData;
-            ifstream in(ACCOUNTS_FILE);
-            in >> accountsData;
+            // Read encrypted data from file
+            std::ifstream infile(ACCOUNTS_FILE, std::ios::binary);
+            std::string encryptedData((std::istreambuf_iterator<char>(infile)),
+                                      std::istreambuf_iterator<char>());
+            infile.close();
+
+            // Decrypt the data
+            string decrypted = decryptAccountsData(encryptedData);
+
+            // Parse JSON
+            json accountsData = json::parse(decrypted);
 
             for (auto& [accName, accInfo] : accountsData.items()) {
                 string accPass;
                 string encryption = "aes";  // default
+                string id1 = "";  // id1 identifier
 
                 // Handle both old format (string) and new format (object)
                 if (accInfo.is_string()) {
@@ -82,13 +137,19 @@ void PasswordManager::loadExistingAccounts() {
                     if (accInfo.contains("encryption")) {
                         encryption = accInfo["encryption"].get<string>();
                     }
+                    if (accInfo.contains("id1")) {
+                        id1 = accInfo["id1"].get<string>();
+                    }
                 }
 
-                Account* account = createLocalAccount(accName, accPass, accName + ".json", encryptionStandard);
+                // Use hashed filename
+                string hashedFilename = hashAccountName(accName);
+                Account* account = createLocalAccount(accName, accPass, hashedFilename, encryptionStandard);
                 accounts[accName] = account;
             }
         } catch (...) {
             // If loading fails, continue
+            cout << "Warning: Could not load existing accounts." << endl;
         }
     }
 }
@@ -111,7 +172,7 @@ PasswordManager::~PasswordManager() {
     accounts.clear();
 }
 
-bool PasswordManager::createAccount(string accName, string accPass, string encryptionType) {
+bool PasswordManager::createAccount(string accName, string accPass, string encryptionType, string id1) {
     if (accounts.find(accName) != accounts.end()) {
         cout << "Account already exists." << endl;
         return false;
@@ -125,24 +186,40 @@ bool PasswordManager::createAccount(string accName, string accPass, string encry
         return false;
     }
 
-    string filename = accName + ".json";
-    Account* newAccount = createLocalAccount(accName, accPass, filename, encryptionStandard);
+    // Use hashed filename for encryption
+    string hashedFilename = hashAccountName(accName);
+    Account* newAccount = createLocalAccount(accName, accPass, hashedFilename, encryptionStandard);
     accounts[accName] = newAccount;
 
-    // Save account metadata with encryption type
+    // Save account metadata (encrypted)
     json accountsData = json::object();
     if (exists(path(ACCOUNTS_FILE))) {
-        ifstream in(ACCOUNTS_FILE);
-        in >> accountsData;
+        try {
+            std::ifstream infile(ACCOUNTS_FILE, std::ios::binary);
+            std::string encryptedData((std::istreambuf_iterator<char>(infile)),
+                                      std::istreambuf_iterator<char>());
+            infile.close();
+            string decrypted = decryptAccountsData(encryptedData);
+            accountsData = json::parse(decrypted);
+        } catch (...) {
+            accountsData = json::object();
+        }
     }
     accountsData[accName] = {
         {"password", accPass},
-        {"encryption", type}
+        {"encryption", type},
+        {"id1", id1}
     };
-    ofstream out(ACCOUNTS_FILE);
-    out << accountsData.dump(4);
 
-    cout << "Account created with " << type << " encryption." << endl;
+    // Encrypt and save with secure permissions
+    string plaintextJson = accountsData.dump(4);
+    string encryptedJson = encryptAccountsData(plaintextJson);
+    ofstream out(ACCOUNTS_FILE, std::ios::binary);
+    out.write(encryptedJson.c_str(), encryptedJson.length());
+    out.close();
+    setSecureFilePermissions(ACCOUNTS_FILE);
+
+    cout << "Account created with " << type << " encryption (encrypted vault filename)." << endl;
     return true;
 }
 
@@ -161,21 +238,42 @@ bool PasswordManager::deleteAccount(string accName, string accPass) {
     delete account;
     accounts.erase(accName);
 
-    // Remove from account metadata
+    // Remove from account metadata (encrypted)
     if (exists(path(ACCOUNTS_FILE))) {
-        json accountsData;
-        ifstream in(ACCOUNTS_FILE);
-        in >> accountsData;
-        accountsData.erase(accName);
-        ofstream out(ACCOUNTS_FILE);
-        out << accountsData.dump(4);
+        try {
+            std::ifstream infile(ACCOUNTS_FILE, std::ios::binary);
+            std::string encryptedData((std::istreambuf_iterator<char>(infile)),
+                                      std::istreambuf_iterator<char>());
+            infile.close();
+            string decrypted = decryptAccountsData(encryptedData);
+            json accountsData = json::parse(decrypted);
+            accountsData.erase(accName);
+
+            // Re-encrypt and save
+            string plaintextJson = accountsData.dump(4);
+            string encryptedJson = encryptAccountsData(plaintextJson);
+            ofstream out(ACCOUNTS_FILE, std::ios::binary);
+            out.write(encryptedJson.c_str(), encryptedJson.length());
+            out.close();
+            setSecureFilePermissions(ACCOUNTS_FILE);
+        } catch (...) {
+            // If decryption fails, just delete the file
+            remove(path(ACCOUNTS_FILE));
+        }
     }
 
-    // Delete individual file
-    string filename = accName + ".json";
-    if (exists(path(filename))) {
-        remove(path(filename));
+    // Delete vault file using hashed filename
+    string hashedFilename = hashAccountName(accName);
+    if (exists(path(hashedFilename))) {
+        remove(path(hashedFilename));
     }
+
+    // Also try to delete old-style filename (backward compatibility)
+    string oldFilename = accName + ".json";
+    if (exists(path(oldFilename))) {
+        remove(path(oldFilename));
+    }
+
     cout << "Account deleted." << endl;
     return true;
 }

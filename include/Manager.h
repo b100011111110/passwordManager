@@ -24,6 +24,7 @@ private:
 
     void loadExistingAccounts();
     void saveAccountMetadata();
+    string getEncryptedFilename(const string& accountName);  // New: get hashed filename
 
 public:
     PasswordManager(Encryption* encryption);
@@ -38,7 +39,7 @@ public:
         view passwords
     */
 
-    bool createAccount(string accName, string accPass, string encryptionType);
+    bool createAccount(string accName, string accPass, string encryptionType, string id1 = "");
 
     bool deleteAccount(string accName, string accPass);
 

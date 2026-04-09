@@ -1,9 +1,12 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <iterator>
 #include "encryption.h"
 #include "Accounts.h"
+#include <nlohmann/json.hpp>
 
+using json = nlohmann::json;
 using std::vector;
 using std::string;
 using std::cout;
@@ -57,7 +60,7 @@ public:
             return false;
         }
         string encryptedIdPassword = encryptPassword(idPassword);
-        vault.push_back(id + ":" + encryptedIdPassword);
+        vault.push_back(id + "|" + encryptedIdPassword);
         saveVault();
         return true;
     }
@@ -67,7 +70,7 @@ public:
             return false;
         }
         for (auto it = vault.begin(); it != vault.end(); ++it) {
-            if (it->substr(0, it->find(':')) == id) {
+            if (it->substr(0, it->find('|')) == id) {
                 vault.erase(it);
                 saveVault();
                 return true;
@@ -81,8 +84,8 @@ public:
             return false;
         }
         for (const auto& entry : vault) {
-            if (entry.substr(0, entry.find(':')) == id) {
-                string encryptedPassword = entry.substr(entry.find(':') + 1);
+            if (entry.substr(0, entry.find('|')) == id) {
+                string encryptedPassword = entry.substr(entry.find('|') + 1);
                 cout << "Password for " << id << ": " << decryptPassword(encryptedPassword) << endl;
                 return true;
             }
@@ -92,22 +95,49 @@ public:
 
 private:
     void saveVault() {
-        ofstream out(filePath);
-        if (!out) return;
+        // Create JSON array of entries
+        json vaultData = json::array();
         for (const auto& entry : vault) {
-            out << entry << endl;
+            vaultData.push_back(entry);
         }
+
+        // Serialize to string
+        string plaintextJson = vaultData.dump();
+
+        // Encrypt entire file
+        string encryptedData = encryptPassword(plaintextJson);
+
+        // Write encrypted data
+        ofstream out(filePath, std::ios::binary);
+        if (!out) return;
+        out.write(encryptedData.c_str(), encryptedData.length());
+        out.close();
     }
 
     void loadVault() {
-        ifstream in(filePath);
+        ifstream in(filePath, std::ios::binary);
         if (!in) return;
-        string line;
-        vault.clear();
-        while (getline(in, line)) {
-            if (!line.empty()) {
-                vault.push_back(line);
+
+        // Read encrypted data
+        string encryptedData((std::istreambuf_iterator<char>(in)),
+                            std::istreambuf_iterator<char>());
+        in.close();
+
+        if (encryptedData.empty()) return;
+
+        try {
+            // Decrypt entire file
+            string decryptedData = decryptPassword(encryptedData);
+
+            // Parse JSON
+            json vaultData = json::parse(decryptedData);
+
+            vault.clear();
+            for (const auto& entry : vaultData) {
+                vault.push_back(entry.get<string>());
             }
+        } catch (...) {
+            vault.clear();
         }
     }
 };
