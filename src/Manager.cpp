@@ -1,6 +1,7 @@
 #include "Manager.h"
 #include <filesystem>
 #include <fstream>
+#include <algorithm>
 #include <nlohmann/json.hpp>
 
 using json = nlohmann::json;
@@ -12,6 +13,50 @@ using std::ifstream;
 using std::ofstream;
 
 const string ACCOUNTS_FILE = "accounts.init";
+const string CONFIG_FILE = "config.json";
+
+string getEncryptionTypeFromConfig() {
+    if (exists(path(CONFIG_FILE))) {
+        try {
+            json config;
+            ifstream in(CONFIG_FILE);
+            in >> config;
+            if (config.contains("encryptionType")) {
+                return config["encryptionType"].get<string>();
+            }
+        } catch (...) {
+            // If config load fails, use default
+        }
+    }
+    return "aes";  // Default to AES
+}
+
+void saveEncryptionTypeToConfig(const string& encType) {
+    json config;
+    if (exists(path(CONFIG_FILE))) {
+        try {
+            ifstream in(CONFIG_FILE);
+            in >> config;
+        } catch (...) {
+            config = json::object();
+        }
+    } else {
+        config = json::object();
+    }
+    config["encryptionType"] = encType;
+    ofstream out(CONFIG_FILE);
+    out << config.dump(4);
+}
+
+Encryption* createEncryptionObject(const string& type) {
+    if (type == "rsa") {
+        return new RSAEncryption();
+    } else if (type == "des") {
+        return new DESEncryption();
+    } else {  // Default to AES
+        return new AESEncryption();
+    }
+}
 
 PasswordManager::PasswordManager(Encryption* encryption)
     : encryptionStandard(encryption) {
@@ -25,7 +70,20 @@ void PasswordManager::loadExistingAccounts() {
             ifstream in(ACCOUNTS_FILE);
             in >> accountsData;
 
-            for (auto& [accName, accPass] : accountsData.items()) {
+            for (auto& [accName, accInfo] : accountsData.items()) {
+                string accPass;
+                string encryption = "aes";  // default
+
+                // Handle both old format (string) and new format (object)
+                if (accInfo.is_string()) {
+                    accPass = accInfo.get<string>();
+                } else if (accInfo.is_object()) {
+                    accPass = accInfo["password"].get<string>();
+                    if (accInfo.contains("encryption")) {
+                        encryption = accInfo["encryption"].get<string>();
+                    }
+                }
+
                 Account* account = createLocalAccount(accName, accPass, accName + ".json", encryptionStandard);
                 accounts[accName] = account;
             }
@@ -53,26 +111,38 @@ PasswordManager::~PasswordManager() {
     accounts.clear();
 }
 
-bool PasswordManager::createAccount(string accName, string accPass) {
+bool PasswordManager::createAccount(string accName, string accPass, string encryptionType) {
     if (accounts.find(accName) != accounts.end()) {
         cout << "Account already exists." << endl;
         return false;
     }
+
+    // Validate encryption type
+    string type = encryptionType;
+    std::transform(type.begin(), type.end(), type.begin(), ::tolower);
+    if (type != "aes" && type != "rsa" && type != "des") {
+        cout << "Invalid encryption type. Supported: aes, rsa, des" << endl;
+        return false;
+    }
+
     string filename = accName + ".json";
     Account* newAccount = createLocalAccount(accName, accPass, filename, encryptionStandard);
     accounts[accName] = newAccount;
 
-    // Save account metadata
+    // Save account metadata with encryption type
     json accountsData = json::object();
     if (exists(path(ACCOUNTS_FILE))) {
         ifstream in(ACCOUNTS_FILE);
         in >> accountsData;
     }
-    accountsData[accName] = accPass;
+    accountsData[accName] = {
+        {"password", accPass},
+        {"encryption", type}
+    };
     ofstream out(ACCOUNTS_FILE);
     out << accountsData.dump(4);
 
-    cout << "Account created." << endl;
+    cout << "Account created with " << type << " encryption." << endl;
     return true;
 }
 
@@ -168,4 +238,23 @@ bool PasswordManager::viewPasswords(string accName, string accPass, string user)
     }
 
     return account->viewPassword(accPass, user);
+}
+
+bool PasswordManager::setEncryption(string encryptionType) {
+    string type = encryptionType;
+    // Convert to lowercase
+    std::transform(type.begin(), type.end(), type.begin(), ::tolower);
+
+    if (type != "aes" && type != "rsa" && type != "des") {
+        cout << "Invalid encryption type. Supported: aes, rsa, des" << endl;
+        return false;
+    }
+
+    saveEncryptionTypeToConfig(type);
+    cout << "Encryption type set to: " << type << endl;
+    return true;
+}
+
+string PasswordManager::getEncryption() const {
+    return getEncryptionTypeFromConfig();
 }

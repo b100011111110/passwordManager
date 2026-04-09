@@ -12,6 +12,11 @@ using std::string;
 using std::cout;
 using std::endl;
 
+// Helper functions for encryption selection
+string getEncryptionTypeFromConfig();
+void saveEncryptionTypeToConfig(const string& encType);
+Encryption* createEncryptionObject(const string& type);
+
 class PasswordManager {
 private:
     std::map<string, Account*> accounts;
@@ -33,7 +38,7 @@ public:
         view passwords
     */
 
-    bool createAccount(string accName, string accPass);
+    bool createAccount(string accName, string accPass, string encryptionType);
 
     bool deleteAccount(string accName, string accPass);
 
@@ -42,6 +47,10 @@ public:
     bool deletePassword(string accName, string accPass, string user);
 
     bool viewPasswords(string accName, string accPass, string user);
+
+    bool setEncryption(string encryptionType);
+
+    string getEncryption() const;
 
     ~PasswordManager();
 
