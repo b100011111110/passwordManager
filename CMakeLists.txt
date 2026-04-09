@@ -11,9 +11,9 @@ include_directories(/usr/include)  # for nlohmann/json
 
 add_executable(passwordManager
     src/main.cpp
-    src/Manager.cpp
-    src/Accounts.cpp
-    src/Encryption.cpp
+    src/tools/Manager.cpp
+    src/tools/Accounts.cpp
+    src/encryption/Encryption.cpp
 )
 
 target_link_libraries(passwordManager OpenSSL::SSL OpenSSL::Crypto)
