@@ -127,7 +127,6 @@ config.json            (unencrypted encryption type preference)
 ## Building
 
 ```bash
-cd /home/neo/Desktop/passwordManager
 mkdir -p build && cd build
 cmake ..
 make
