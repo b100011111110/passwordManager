@@ -1,6 +1,6 @@
 ./a.out
 ./plan.txt
-
+./accounts.init
 # Private data
 data.init
 *.json
