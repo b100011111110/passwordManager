@@ -22,6 +22,10 @@ private:
     static bool storeInLibsecret(const std::vector<unsigned char>& key);
     static std::vector<unsigned char> retrieveFromLibsecret();
 
+    // Development fallback: encrypted file storage
+    static bool storeInEncryptedFile(const std::vector<unsigned char>& key);
+    static std::vector<unsigned char> retrieveFromEncryptedFile();
+
     // Helpers
     static std::string toHex(const std::vector<unsigned char>& data);
     static std::vector<unsigned char> fromHex(const std::string& hex);

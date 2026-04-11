@@ -1,4 +1,5 @@
 #include "MasterKeyManager.h"
+#include "encryption.h"
 #include <iostream>
 #include <fstream>
 #include <filesystem>
@@ -7,6 +8,7 @@
 #include <cstring>
 #include <stdexcept>
 #include <openssl/rand.h>
+#include <openssl/evp.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -46,14 +48,20 @@ std::vector<unsigned char> MasterKeyManager::generateAndStoreMasterKey() {
         std::cerr << "Warning: TPM sealing failed, continuing..." << std::endl;
     }
 
-    // Try to store in libsecret
+    // Try libsecret fallback
     bool libsecretSuccess = storeInLibsecret(key);
     if (!libsecretSuccess) {
         std::cerr << "Warning: libsecret storage failed, continuing..." << std::endl;
     }
 
-    // If both failed, throw error
-    if (!tpmSuccess && !libsecretSuccess) {
+    // Development fallback: store encrypted in file using machine-specific key
+    bool fileSuccess = storeInEncryptedFile(key);
+    if (!fileSuccess) {
+        std::cerr << "Warning: encrypted file storage failed, continuing..." << std::endl;
+    }
+
+    // If all backends failed, throw error
+    if (!tpmSuccess && !libsecretSuccess && !fileSuccess) {
         throw std::runtime_error("Failed to store master key in any backend");
     }
 
@@ -80,6 +88,16 @@ std::vector<unsigned char> MasterKeyManager::retrieveMasterKey() {
     // Try libsecret fallback
     try {
         vector<unsigned char> key = retrieveFromLibsecret();
+        if (key.size() == 32) {
+            return key;
+        }
+    } catch (const std::runtime_error& e) {
+        // Continue to file fallback
+    }
+
+    // Development fallback: try encrypted file
+    try {
+        vector<unsigned char> key = retrieveFromEncryptedFile();
         if (key.size() == 32) {
             return key;
         }
@@ -211,6 +229,93 @@ std::vector<unsigned char> MasterKeyManager::retrieveFromLibsecret() {
         throw;
     } catch (...) {
         throw std::runtime_error("libsecret retrieval failed");
+    }
+}
+
+bool MasterKeyManager::storeInEncryptedFile(const vector<unsigned char>& key) {
+    try {
+        // Generate machine-specific key from hostname + username
+        string machineKey = "";
+        const char* hostname = getenv("HOSTNAME");
+        const char* user = getenv("USER");
+        if (hostname) machineKey += hostname;
+        if (user) machineKey += user;
+        if (machineKey.empty()) machineKey = "default";
+
+        // Derive encryption key from machine-specific string
+        vector<unsigned char> fileKey(32);
+        if (!EVP_BytesToKey(EVP_aes_256_cbc(), EVP_sha256(), nullptr,
+                           reinterpret_cast<const unsigned char*>(machineKey.data()),
+                           static_cast<int>(machineKey.size()), 10000,  // 10,000 iterations
+                           fileKey.data(), nullptr)) {
+            return false;
+        }
+
+        // Encrypt the master key
+        AESEncryption aes;
+        string hexKey = toHex(key);
+        string encrypted = aes.encrypt(hexKey, fileKey);
+
+        // Store in file
+        string keyFilePath = getMetaPath();
+        keyFilePath = keyFilePath.substr(0, keyFilePath.find_last_of('/')) + "/master.key";
+
+        std::ofstream keyFile(keyFilePath, std::ios::binary);
+        if (!keyFile) return false;
+
+        keyFile.write(encrypted.data(), encrypted.size());
+        keyFile.close();
+
+        // Set restrictive permissions
+        chmod(keyFilePath.c_str(), S_IRUSR | S_IWUSR);
+
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+std::vector<unsigned char> MasterKeyManager::retrieveFromEncryptedFile() {
+    try {
+        // Generate machine-specific key from hostname + username
+        string machineKey = "";
+        const char* hostname = getenv("HOSTNAME");
+        const char* user = getenv("USER");
+        if (hostname) machineKey += hostname;
+        if (user) machineKey += user;
+        if (machineKey.empty()) machineKey = "default";
+
+        // Derive encryption key from machine-specific string
+        vector<unsigned char> fileKey(32);
+        if (!EVP_BytesToKey(EVP_aes_256_cbc(), EVP_sha256(), nullptr,
+                           reinterpret_cast<const unsigned char*>(machineKey.data()),
+                           static_cast<int>(machineKey.size()), 10000,  // 10,000 iterations
+                           fileKey.data(), nullptr)) {
+            throw std::runtime_error("Failed to derive file encryption key");
+        }
+
+        // Read encrypted key from file
+        string keyFilePath = getMetaPath();
+        keyFilePath = keyFilePath.substr(0, keyFilePath.find_last_of('/')) + "/master.key";
+
+        std::ifstream keyFile(keyFilePath, std::ios::binary);
+        if (!keyFile) {
+            throw std::runtime_error("Master key file not found");
+        }
+
+        string encrypted((std::istreambuf_iterator<char>(keyFile)),
+                        std::istreambuf_iterator<char>());
+        keyFile.close();
+
+        // Decrypt the master key
+        AESEncryption aes;
+        string decryptedHex = aes.decrypt(encrypted, fileKey);
+
+        return fromHex(decryptedHex);
+    } catch (const std::runtime_error& e) {
+        throw;
+    } catch (...) {
+        throw std::runtime_error("Failed to retrieve master key from encrypted file");
     }
 }
 
