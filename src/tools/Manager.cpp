@@ -120,15 +120,11 @@ void PasswordManager::loadExistingAccounts() {
             json accountsData = json::parse(decrypted);
 
             for (auto& [accName, accInfo] : accountsData.items()) {
-                string accPass;
                 string encryption = "aes";  // default
                 string id1 = "";  // id1 identifier
 
                 // Handle both old format (string) and new format (object)
-                if (accInfo.is_string()) {
-                    accPass = accInfo.get<string>();
-                } else if (accInfo.is_object()) {
-                    accPass = accInfo["password"].get<string>();
+                if (accInfo.is_object()) {
                     if (accInfo.contains("encryption")) {
                         encryption = accInfo["encryption"].get<string>();
                     }
@@ -137,15 +133,10 @@ void PasswordManager::loadExistingAccounts() {
                     }
                 }
 
-                // Use hashed filename
+                // Store only metadata, no plaintext passwords
                 string hashedFilename = hashAccountName(accName);
-                try {
-                    Account* account = createLocalAccount(accName, accPass, hashedFilename, encryptionStandard);
-                    accounts[accName] = account;
-                } catch (const std::runtime_error& e) {
-                    // Wrong password or decryption error - skip loading this account
-                    cout << "Warning: Could not load account '" << accName << "': " << e.what() << endl;
-                }
+                AccountMeta meta = {accName, hashedFilename, encryption, id1};
+                accounts[accName] = meta;
             }
         } catch (...) {
             // If loading fails, continue
@@ -156,20 +147,24 @@ void PasswordManager::loadExistingAccounts() {
 
 void PasswordManager::saveAccountMetadata() {
     json accountsData = json::object();
-    for (const auto& [accName, account] : accounts) {
-        // We need to get the password from account - for now just use a placeholder
-        // In a real implementation, you'd want to encrypt this
-        accountsData[accName] = "";  // Password stored in memory only
+    for (const auto& [accName, meta] : accounts) {
+        // Store only metadata, no passwords
+        accountsData[accName] = {
+            {"encryption", meta.encryptionType},
+            {"id1", meta.id1}
+        };
     }
-    ofstream out(ACCOUNTS_FILE);
-    out << accountsData.dump(4);
+    // Encrypt and save with secure permissions
+    string plaintextJson = accountsData.dump(4);
+    string encryptedJson = encryptAccountsData(plaintextJson);
+    ofstream out(ACCOUNTS_FILE, std::ios::binary);
+    out.write(encryptedJson.c_str(), encryptedJson.length());
+    out.close();
+    setSecureFilePermissions(ACCOUNTS_FILE);
 }
 
 PasswordManager::~PasswordManager() {
-    for (auto& pair : accounts) {
-        delete pair.second;
-    }
-    accounts.clear();
+    // No longer need to delete Account* objects since we store AccountMeta structs
 }
 
 bool PasswordManager::createAccount(string accName, string accPass, string encryptionType, string id1) {
@@ -185,40 +180,21 @@ bool PasswordManager::createAccount(string accName, string accPass, string encry
     // Use hashed filename for encryption
     string hashedFilename = hashAccountName(accName);
     try {
-        Account* newAccount = createLocalAccount(accName, accPass, hashedFilename, encryptionStandard);
-        accounts[accName] = newAccount;
+        // Create account object temporarily to validate and create vault file
+        Account* tempAccount = createLocalAccount(accName, accPass, hashedFilename, encryptionStandard);
+        delete tempAccount;  // Clean up temporary object
+        
+        // Store only metadata in memory
+        AccountMeta meta = {accName, hashedFilename, type, id1};
+        accounts[accName] = meta;
+        
+        // Save account metadata (encrypted, no passwords)
+        saveAccountMetadata();
+        
     } catch (const std::runtime_error& e) {
         cout << "Failed to create account: " << e.what() << endl;
         return false;
     }
-
-    // Save account metadata (encrypted)
-    json accountsData = json::object();
-    if (exists(path(ACCOUNTS_FILE))) {
-        try {
-            std::ifstream infile(ACCOUNTS_FILE, std::ios::binary);
-            std::string encryptedData((std::istreambuf_iterator<char>(infile)),
-                                      std::istreambuf_iterator<char>());
-            infile.close();
-            string decrypted = decryptAccountsData(encryptedData);
-            accountsData = json::parse(decrypted);
-        } catch (...) {
-            accountsData = json::object();
-        }
-    }
-    accountsData[accName] = {
-        {"password", accPass},
-        {"encryption", type},
-        {"id1", id1}
-    };
-
-    // Encrypt and save with secure permissions
-    string plaintextJson = accountsData.dump(4);
-    string encryptedJson = encryptAccountsData(plaintextJson);
-    ofstream out(ACCOUNTS_FILE, std::ios::binary);
-    out.write(encryptedJson.c_str(), encryptedJson.length());
-    out.close();
-    setSecureFilePermissions(ACCOUNTS_FILE);
 
     cout << "Account created with " << type << " encryption (encrypted vault filename)." << endl;
     return true;
@@ -230,43 +206,30 @@ bool PasswordManager::deleteAccount(string accName, string accPass) {
         return false;
     }
 
-    Account* account = accounts[accName];
-    if (!account->validateAccountPassword(accPass)) {
+    AccountMeta meta = accounts[accName];
+    
+    // Create account object temporarily to validate password
+    Account* tempAccount = nullptr;
+    try {
+        tempAccount = createLocalAccount(accName, accPass, meta.hashedFilename, encryptionStandard);
+        // If we get here, password is valid
+        delete tempAccount;
+        tempAccount = nullptr;
+    } catch (const std::runtime_error& e) {
         cout << "Invalid account or password." << endl;
+        if (tempAccount) delete tempAccount;
         return false;
     }
 
-    delete account;
+    // Remove from accounts map
     accounts.erase(accName);
 
-    // Remove from account metadata (encrypted)
-    if (exists(path(ACCOUNTS_FILE))) {
-        try {
-            std::ifstream infile(ACCOUNTS_FILE, std::ios::binary);
-            std::string encryptedData((std::istreambuf_iterator<char>(infile)),
-                                      std::istreambuf_iterator<char>());
-            infile.close();
-            string decrypted = decryptAccountsData(encryptedData);
-            json accountsData = json::parse(decrypted);
-            accountsData.erase(accName);
-
-            // Re-encrypt and save
-            string plaintextJson = accountsData.dump(4);
-            string encryptedJson = encryptAccountsData(plaintextJson);
-            ofstream out(ACCOUNTS_FILE, std::ios::binary);
-            out.write(encryptedJson.c_str(), encryptedJson.length());
-            out.close();
-            setSecureFilePermissions(ACCOUNTS_FILE);
-        } catch (...) {
-            // If decryption fails, just delete the file
-            remove(path(ACCOUNTS_FILE));
-        }
-    }
+    // Update account metadata file
+    saveAccountMetadata();
 
     // Delete vault file using hashed filename
-    string hashedFilename = hashAccountName(accName);
-    if (exists(path(hashedFilename))) {
-        remove(path(hashedFilename));
+    if (exists(path(meta.hashedFilename))) {
+        remove(path(meta.hashedFilename));
     }
 
     // Also try to delete old-style filename (backward compatibility)
@@ -285,16 +248,23 @@ void PasswordManager::addPassword(string accName, string accPass, string user, s
         return;
     }
 
-    Account* account = accounts[accName];
-    if (!account->validateAccountPassword(accPass)) {
+    AccountMeta meta = accounts[accName];
+    
+    // Create account object temporarily to perform operation
+    Account* account = nullptr;
+    try {
+        account = createLocalAccount(accName, accPass, meta.hashedFilename, encryptionStandard);
+        
+        if (account->addPassword(accPass, user, pass)) {
+            cout << "Password added." << endl;
+        } else {
+            cout << "Failed to add password." << endl;
+        }
+        
+        delete account;
+    } catch (const std::runtime_error& e) {
         cout << "Invalid account or password." << endl;
-        return;
-    }
-
-    if (account->addPassword(accPass, user, pass)) {
-        cout << "Password added." << endl;
-    } else {
-        cout << "Failed to add password." << endl;
+        if (account) delete account;
     }
 }
 
@@ -304,17 +274,25 @@ bool PasswordManager::deletePassword(string accName, string accPass, string user
         return false;
     }
 
-    Account* account = accounts[accName];
-    if (!account->validateAccountPassword(accPass)) {
+    AccountMeta meta = accounts[accName];
+    
+    // Create account object temporarily to perform operation
+    Account* account = nullptr;
+    try {
+        account = createLocalAccount(accName, accPass, meta.hashedFilename, encryptionStandard);
+        
+        if (account->deletePassword(accPass, user)) {
+            cout << "Password deleted." << endl;
+            delete account;
+            return true;
+        } else {
+            cout << "Password not found." << endl;
+            delete account;
+            return false;
+        }
+    } catch (const std::runtime_error& e) {
         cout << "Invalid account or password." << endl;
-        return false;
-    }
-
-    if (account->deletePassword(accPass, user)) {
-        cout << "Password deleted." << endl;
-        return true;
-    } else {
-        cout << "Password not found." << endl;
+        if (account) delete account;
         return false;
     }
 }
@@ -325,18 +303,27 @@ bool PasswordManager::viewPasswords(string accName, string accPass, string user)
         return false;
     }
 
-    Account* account = accounts[accName];
-    if (!account->validateAccountPassword(accPass)) {
+    AccountMeta meta = accounts[accName];
+    
+    // Create account object temporarily to perform operation
+    Account* account = nullptr;
+    try {
+        account = createLocalAccount(accName, accPass, meta.hashedFilename, encryptionStandard);
+        
+        if (user.empty()) {
+            cout << "Viewing all passwords - feature not fully implemented" << endl;
+            delete account;
+            return false;
+        }
+
+        bool result = account->viewPassword(accPass, user);
+        delete account;
+        return result;
+    } catch (const std::runtime_error& e) {
         cout << "Invalid account or password." << endl;
+        if (account) delete account;
         return false;
     }
-
-    if (user.empty()) {
-        cout << "Viewing all passwords - feature not fully implemented" << endl;
-        return false;
-    }
-
-    return account->viewPassword(accPass, user);
 }
 
 bool PasswordManager::setEncryption(string encryptionType) {

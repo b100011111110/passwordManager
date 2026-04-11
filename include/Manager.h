@@ -12,6 +12,14 @@ using std::string;
 using std::cout;
 using std::endl;
 
+// Account metadata structure (no plaintext passwords stored)
+struct AccountMeta {
+    string accountName;
+    string hashedFilename;
+    string encryptionType;
+    string id1;  // Additional identifier if needed
+};
+
 // Helper functions for encryption selection
 string getEncryptionTypeFromConfig();
 void saveEncryptionTypeToConfig(const string& encType);
@@ -19,7 +27,7 @@ Encryption* createEncryptionObject(const string& type);
 
 class PasswordManager {
 private:
-    std::map<string, Account*> accounts;
+    std::map<string, AccountMeta> accounts;  // Changed from Account* to AccountMeta
     Encryption* encryptionStandard;
 
     void loadExistingAccounts();
@@ -53,7 +61,7 @@ public:
 
     string getEncryption() const;
 
-    ~PasswordManager();
+    ~PasswordManager();  // No longer needs to delete Account* objects
 
     // We will add the rest of the methods in Stage 2
 };

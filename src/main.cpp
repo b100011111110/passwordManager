@@ -105,27 +105,8 @@ int main(int argc, char* argv[]) {
             cout << "Enter account password: ";
             accountPassword = readPasswordHidden();
 
-            // Prompt for encryption type
-            cout << "Select encryption type:" << endl;
-            cout << "1. AES" << endl;
-            cout << "2. RSA" << endl;
-            cout << "3. DES" << endl;
-            cout << "Enter choice (1-3): ";
-
-            string choice;
-            std::getline(std::cin, choice);
-
-            string encType;
-            if (choice == "1") {
-                encType = "aes";
-            } else if (choice == "2") {
-                encType = "rsa";
-            } else if (choice == "3") {
-                encType = "des";
-            } else {
-                cout << "Invalid choice. Using default AES." << endl;
-                encType = "aes";
-            }
+            // Use AES encryption (only supported encryption type)
+            string encType = "aes";
 
             if (mgr.createAccount(acountName, accountPassword, encType)) {
                 cout << "Account created successfully!" << endl;

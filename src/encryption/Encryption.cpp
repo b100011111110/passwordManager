@@ -105,15 +105,16 @@ string AESEncryption::decrypt(const string& data, const string& key) {
         throw std::invalid_argument("Encrypted data too short");
     }
 
-    unsigned char aesKey[32];
+    unsigned char aesKey[32]; // AES-256
     unsigned char aesIv[16];
     std::memcpy(aesIv, encrypted.data(), 16);
     string cipher = encrypted.substr(16);
 
+    // Derive key using EVP_BytesToKey (but don't overwrite the extracted IV)
     if (!EVP_BytesToKey(EVP_aes_256_cbc(), EVP_sha256(), nullptr,
                         reinterpret_cast<const unsigned char*>(key.data()),
                         static_cast<int>(key.size()), 1,
-                        aesKey, aesIv)) {
+                        aesKey, nullptr)) {  // Pass nullptr for IV to avoid overwriting
         throw std::runtime_error("EVP_BytesToKey failed");
     }
 
