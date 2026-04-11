@@ -91,13 +91,8 @@ void saveEncryptionTypeToConfig(const string& encType) {
 }
 
 Encryption* createEncryptionObject(const string& type) {
-    if (type == "rsa") {
-        return new RSAEncryption();
-    } else if (type == "des") {
-        return new DESEncryption();
-    } else {  // Default to AES
-        return new AESEncryption();
-    }
+    // Only AES encryption is supported
+    return new AESEncryption();
 }
 
 PasswordManager::PasswordManager(Encryption* encryption)
@@ -144,8 +139,13 @@ void PasswordManager::loadExistingAccounts() {
 
                 // Use hashed filename
                 string hashedFilename = hashAccountName(accName);
-                Account* account = createLocalAccount(accName, accPass, hashedFilename, encryptionStandard);
-                accounts[accName] = account;
+                try {
+                    Account* account = createLocalAccount(accName, accPass, hashedFilename, encryptionStandard);
+                    accounts[accName] = account;
+                } catch (const std::runtime_error& e) {
+                    // Wrong password or decryption error - skip loading this account
+                    cout << "Warning: Could not load account '" << accName << "': " << e.what() << endl;
+                }
             }
         } catch (...) {
             // If loading fails, continue
@@ -178,18 +178,19 @@ bool PasswordManager::createAccount(string accName, string accPass, string encry
         return false;
     }
 
-    // Validate encryption type
-    string type = encryptionType;
+    // Only AES encryption is supported
+    string type = "aes";
     std::transform(type.begin(), type.end(), type.begin(), ::tolower);
-    if (type != "aes" && type != "rsa" && type != "des") {
-        cout << "Invalid encryption type. Supported: aes, rsa, des" << endl;
-        return false;
-    }
 
     // Use hashed filename for encryption
     string hashedFilename = hashAccountName(accName);
-    Account* newAccount = createLocalAccount(accName, accPass, hashedFilename, encryptionStandard);
-    accounts[accName] = newAccount;
+    try {
+        Account* newAccount = createLocalAccount(accName, accPass, hashedFilename, encryptionStandard);
+        accounts[accName] = newAccount;
+    } catch (const std::runtime_error& e) {
+        cout << "Failed to create account: " << e.what() << endl;
+        return false;
+    }
 
     // Save account metadata (encrypted)
     json accountsData = json::object();
@@ -339,14 +340,10 @@ bool PasswordManager::viewPasswords(string accName, string accPass, string user)
 }
 
 bool PasswordManager::setEncryption(string encryptionType) {
-    string type = encryptionType;
+    // Only AES encryption is supported
+    string type = "aes";
     // Convert to lowercase
     std::transform(type.begin(), type.end(), type.begin(), ::tolower);
-
-    if (type != "aes" && type != "rsa" && type != "des") {
-        cout << "Invalid encryption type. Supported: aes, rsa, des" << endl;
-        return false;
-    }
 
     saveEncryptionTypeToConfig(type);
     cout << "Encryption type set to: " << type << endl;

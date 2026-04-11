@@ -65,7 +65,6 @@ void printHelp() {
     cout << "  add [accountName] [username] - Add a password for a user (passwords will be prompted)" << endl;
     cout << "  remove [accountName] [username] - Remove a password for a user (account password will be prompted)" << endl;
     cout << "  view [accountName] [username] - View password for a user (account password will be prompted)" << endl;
-    cout << "  config encryption [aes|rsa|des] - Set encryption type" << endl;
 }
 
 int main(int argc, char* argv[]) {

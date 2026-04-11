@@ -2,6 +2,7 @@
 #define ENCRYPTION_H
 
 #include <string>
+#include <vector>
 
 using std::string;
 
@@ -16,18 +17,10 @@ class AESEncryption : public Encryption {
 public:
     string encrypt(const string& data, const string& key) override;
     string decrypt(const string& data, const string& key) override;
-};
-
-class RSAEncryption : public Encryption {
-public:
-    string encrypt(const string& data, const string& key) override;
-    string decrypt(const string& data, const string& key) override;
-};
-
-class DESEncryption : public Encryption {
-public:
-    string encrypt(const string& data, const string& key) override;
-    string decrypt(const string& data, const string& key) override;
+    
+    // Overloaded methods for vector-based keys (used by vault system)
+    string encrypt(const string& data, const std::vector<unsigned char>& rawKey);
+    string decrypt(const string& data, const std::vector<unsigned char>& rawKey);
 };
 
 #endif // ENCRYPTION_H

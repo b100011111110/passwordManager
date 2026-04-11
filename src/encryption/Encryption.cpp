@@ -1,10 +1,6 @@
 #include <openssl/evp.h>
 #include <openssl/rand.h>
-#include <openssl/rsa.h>
-#include <openssl/pem.h>
 #include <openssl/err.h>
-#include <openssl/bio.h>
-#include <openssl/buffer.h>
 #include <stdexcept>
 #include <sstream>
 #include <iomanip>
@@ -50,39 +46,7 @@ static inline string fromHex(const string& hex) {
     return out;
 }
 
-static inline string base64Encode(const string& bin) {
-    BIO* bio = BIO_new(BIO_s_mem());
-    BIO* b64 = BIO_new(BIO_f_base64());
-    BIO_set_flags(b64, BIO_FLAGS_BASE64_NO_NL);
-    BIO_push(b64, bio);
-    BIO_write(b64, bin.data(), static_cast<int>(bin.size()));
-    BIO_flush(b64);
-
-    BUF_MEM* bptr;
-    BIO_get_mem_ptr(b64, &bptr);
-    string out(bptr->data, bptr->length);
-
-    BIO_free_all(b64);
-    return out;
-}
-
-static inline string base64Decode(const string& b64) {
-    BIO* bio = BIO_new_mem_buf(b64.data(), static_cast<int>(b64.size()));
-    BIO* b64f = BIO_new(BIO_f_base64());
-    BIO_set_flags(b64f, BIO_FLAGS_BASE64_NO_NL);
-    BIO_push(b64f, bio);
-
-    std::vector<char> buffer(b64.size());
-    int len = BIO_read(b64f, buffer.data(), static_cast<int>(buffer.size()));
-    if (len < 0) {
-        BIO_free_all(b64f);
-        throw std::runtime_error("Base64 decode failure");
-    }
-
-    BIO_free_all(b64f);
-    return string(buffer.data(), len);
-}
-
+// AES encryption with string-based key (EVP_BytesToKey derivation)
 string AESEncryption::encrypt(const string& data, const string& key) {
     if (key.empty()) {
         throw std::invalid_argument("AES key is empty");
@@ -183,80 +147,28 @@ string AESEncryption::decrypt(const string& data, const string& key) {
     return plaintext;
 }
 
-string RSAEncryption::encrypt(const string& data, const string& key) {
-    BIO* bio = BIO_new_mem_buf(key.data(), static_cast<int>(key.size()));
-    if (!bio) {
-        throw std::runtime_error("Failed to create BIO for RSA public key");
+// AES encryption with vector-based key (already derived via PBKDF2)
+string AESEncryption::encrypt(const string& data, const std::vector<unsigned char>& rawKey) {
+    if (rawKey.empty() || rawKey.size() != 32) {
+        throw std::invalid_argument("AES key must be exactly 32 bytes");
     }
 
-    RSA* rsa = PEM_read_bio_RSA_PUBKEY(bio, nullptr, nullptr, nullptr);
-    BIO_free(bio);
-    if (!rsa) {
-        throw std::runtime_error("Failed to load RSA public key");
+    // Generate random IV (16 bytes)
+    unsigned char aesIv[16];
+    if (!RAND_bytes(aesIv, sizeof(aesIv))) {
+        throw std::runtime_error("RAND_bytes failed");
     }
-
-    int rsaSize = RSA_size(rsa);
-    std::vector<unsigned char> out(rsaSize);
-    int encryptedLen = RSA_public_encrypt(static_cast<int>(data.size()),
-                                          reinterpret_cast<const unsigned char*>(data.data()),
-                                          out.data(), rsa, RSA_PKCS1_OAEP_PADDING);
-    RSA_free(rsa);
-
-    if (encryptedLen <= 0) {
-        throw std::runtime_error("RSA_public_encrypt failed");
-    }
-
-    return base64Encode(string(reinterpret_cast<char*>(out.data()), encryptedLen));
-}
-
-string RSAEncryption::decrypt(const string& data, const string& key) {
-    string bin = base64Decode(data);
-
-    BIO* bio = BIO_new_mem_buf(key.data(), static_cast<int>(key.size()));
-    if (!bio) {
-        throw std::runtime_error("Failed to create BIO for RSA private key");
-    }
-
-    RSA* rsa = PEM_read_bio_RSAPrivateKey(bio, nullptr, nullptr, nullptr);
-    BIO_free(bio);
-    if (!rsa) {
-        throw std::runtime_error("Failed to load RSA private key");
-    }
-
-    int rsaSize = RSA_size(rsa);
-    std::vector<unsigned char> out(rsaSize);
-    int decryptedLen = RSA_private_decrypt(static_cast<int>(bin.size()),
-                                           reinterpret_cast<const unsigned char*>(bin.data()),
-                                           out.data(), rsa, RSA_PKCS1_OAEP_PADDING);
-    RSA_free(rsa);
-
-    if (decryptedLen <= 0) {
-        throw std::runtime_error("RSA_private_decrypt failed");
-    }
-
-    return string(reinterpret_cast<char*>(out.data()), decryptedLen);
-}
-
-string DESEncryption::encrypt(const string& data, const string& key) {
-    if (key.empty()) {
-        throw std::invalid_argument("DES key is empty");
-    }
-
-    unsigned char desKey[8] = {0};
-    unsigned char desIv[8] = {0};
-    std::memcpy(desKey, key.data(), std::min<size_t>(key.size(), 8));
-    std::memcpy(desIv, key.data(), std::min<size_t>(key.size(), 8));
 
     EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
     if (!ctx) {
         throw std::runtime_error("EVP_CIPHER_CTX_new failed");
     }
 
-    ensureOpensslSuccess(EVP_EncryptInit_ex(ctx, EVP_des_cbc(), nullptr, desKey, desIv) == 1,
+    ensureOpensslSuccess(EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), nullptr, rawKey.data(), aesIv) == 1,
                          "EVP_EncryptInit_ex");
 
     string cipher;
-    cipher.resize(data.size() + EVP_CIPHER_block_size(EVP_des_cbc()));
+    cipher.resize(data.size() + EVP_CIPHER_block_size(EVP_aes_256_cbc()));
 
     int outLen1 = 0;
     ensureOpensslSuccess(EVP_EncryptUpdate(ctx,
@@ -273,28 +185,33 @@ string DESEncryption::encrypt(const string& data, const string& key) {
                          "EVP_EncryptFinal_ex");
 
     EVP_CIPHER_CTX_free(ctx);
+
     cipher.resize(outLen1 + outLen2);
-    return base64Encode(cipher);
+    string ivStr(reinterpret_cast<char*>(aesIv), sizeof(aesIv));
+
+    return toHex(ivStr + cipher);
 }
 
-string DESEncryption::decrypt(const string& data, const string& key) {
-    if (key.empty()) {
-        throw std::invalid_argument("DES key is empty");
+string AESEncryption::decrypt(const string& data, const std::vector<unsigned char>& rawKey) {
+    if (rawKey.empty() || rawKey.size() != 32) {
+        throw std::invalid_argument("AES key must be exactly 32 bytes");
     }
 
-    string cipher = base64Decode(data);
+    string encrypted = fromHex(data);
+    if (encrypted.size() < 16) {
+        throw std::invalid_argument("Encrypted data too short");
+    }
 
-    unsigned char desKey[8] = {0};
-    unsigned char desIv[8] = {0};
-    std::memcpy(desKey, key.data(), std::min<size_t>(key.size(), 8));
-    std::memcpy(desIv, key.data(), std::min<size_t>(key.size(), 8));
+    unsigned char aesIv[16];
+    std::memcpy(aesIv, encrypted.data(), 16);
+    string cipher = encrypted.substr(16);
 
     EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
     if (!ctx) {
         throw std::runtime_error("EVP_CIPHER_CTX_new failed");
     }
 
-    ensureOpensslSuccess(EVP_DecryptInit_ex(ctx, EVP_des_cbc(), nullptr, desKey, desIv) == 1,
+    ensureOpensslSuccess(EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), nullptr, rawKey.data(), aesIv) == 1,
                          "EVP_DecryptInit_ex");
 
     string plaintext;
