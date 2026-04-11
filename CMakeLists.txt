@@ -9,9 +9,13 @@ find_package(OpenSSL REQUIRED)
 include_directories(include)
 include_directories(/usr/include)  # for nlohmann/json
 
+# Runtime dependencies (must be installed):
+#   sudo apt install tpm2-tools libsecret-tools
+
 add_executable(passwordManager
     src/main.cpp
     src/tools/Manager.cpp
+    src/tools/MasterKeyManager.cpp
     src/tools/Accounts.cpp
     src/encryption/Encryption.cpp
 )

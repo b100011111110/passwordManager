@@ -29,10 +29,15 @@ class PasswordManager {
 private:
     std::map<string, AccountMeta> accounts;  // Changed from Account* to AccountMeta
     Encryption* encryptionStandard;
+    std::vector<unsigned char> masterKey;
 
     void loadExistingAccounts();
     void saveAccountMetadata();
     string getEncryptedFilename(const string& accountName);  // New: get hashed filename
+
+    // Account data encryption/decryption using hardware-protected master key
+    string encryptAccountsData(const string& plaintext);
+    string decryptAccountsData(const string& ciphertext);
 
 public:
     PasswordManager(Encryption* encryption);

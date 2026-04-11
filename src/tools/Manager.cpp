@@ -1,4 +1,5 @@
 #include "Manager.h"
+#include "MasterKeyManager.h"
 #include <filesystem>
 #include <fstream>
 #include <algorithm>
@@ -19,27 +20,21 @@ using std::ofstream;
 const string ACCOUNTS_FILE = "accounts.init";
 const string CONFIG_FILE = "config.json";
 
-// Master encryption key for accounts file (in production, derive from master password)
-const string ACCOUNTS_MASTER_KEY = "PasswordManager2024SecureKey!";
-
 // Set restrictive file permissions (0600 = owner read/write only)
 void setSecureFilePermissions(const string& filename) {
     chmod(filename.c_str(), S_IRUSR | S_IWUSR);  // 0600
 }
 
-// Encrypt accounts data using AES
-string encryptAccountsData(const string& plaintext) {
+// Encrypt accounts data using AES with hardware-protected master key
+string PasswordManager::encryptAccountsData(const string& plaintext) {
     AESEncryption aes;
-    // For accounts file, we use a fixed master key derived from ACCOUNTS_MASTER_KEY
-    string encrypted = aes.encrypt(plaintext, ACCOUNTS_MASTER_KEY);
-    return encrypted;
+    return aes.encrypt(plaintext, this->masterKey);  // vector overload — no EVP_BytesToKey
 }
 
-// Decrypt accounts data using AES
-string decryptAccountsData(const string& ciphertext) {
+// Decrypt accounts data using AES with hardware-protected master key
+string PasswordManager::decryptAccountsData(const string& ciphertext) {
     AESEncryption aes;
-    string decrypted = aes.decrypt(ciphertext, ACCOUNTS_MASTER_KEY);
-    return decrypted;
+    return aes.decrypt(ciphertext, this->masterKey);  // vector overload — no EVP_BytesToKey
 }
 
 // Generate SHA256 hash of account name for encrypted filename
@@ -97,6 +92,12 @@ Encryption* createEncryptionObject(const string& type) {
 
 PasswordManager::PasswordManager(Encryption* encryption)
     : encryptionStandard(encryption) {
+    try {
+        masterKey = MasterKeyManager::getMasterKey();
+    } catch (const std::runtime_error& e) {
+        std::cerr << e.what() << std::endl;
+        exit(1);
+    }
     loadExistingAccounts();
 }
 
