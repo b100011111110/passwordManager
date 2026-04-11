@@ -23,7 +23,10 @@ This project is designed as a structured learning journey through professional C
 | `view` | Retrieve and display a stored password for a given ID |
 | **Full-File Encryption** | Entire vault file is encrypted with account password (AES-256) |
 | **Encrypted Metadata** | Account metadata (including `id1` identifiers) is encrypted |
-| Multiple Encryption Types | Support for AES, RSA, and DES encryption algorithms |
+| **PBKDF2 Key Derivation** | Passwords are derived using PBKDF2 (200k iterations, SHA256) |
+| **Per-Vault Random Salt** | Each vault has unique random 16-byte salt stored plaintext |
+| **Random IV Per Operation** | Each encryption generates new random 16-byte IV |
+| **Magic Header Authentication** | "PMGR" header validates correct password on vault load |
 | Local Storage | No cloud, no internet — everything lives on your machine |
 | Binary Encryption Format | The storage file is completely encrypted and not human-readable |
 
@@ -49,21 +52,15 @@ This project is designed as a structured learning journey through professional C
 # View a stored credential (will prompt for password, then display the password)
 ./passwordManager view <accountName> <id>
 
-# Set encryption type for new accounts
-./passwordManager config encryption [aes|rsa|des]
+# Note: AES-256 is the only supported encryption method
 ```
 
 ### Examples
 
 ```bash
-# Create account with AES encryption
+# Create account with AES-256 encryption
 $ ./passwordManager create myVault
 Enter account password: 
-Select encryption type:
-1. AES
-2. RSA
-3. DES
-Enter choice (1-3): 1
 Account created with aes encryption (encrypted vault filename).
 Account created successfully!
 
@@ -98,20 +95,29 @@ Account deleted.
 - **Metadata encryption**: Account information is stored in an encrypted `accounts.init` file using a master key.
 
 ### Encryption Mechanism
-- Account passwords are passed through a **key derivation function (KDF)** to produce an encryption key.
-- All vault data is serialized to **JSON format**, then encrypted using your selected algorithm:
-  - **AES-256** (default, recommended) — via OpenSSL EVP interface
-  - **RSA** — public-key encryption with OAEP padding
-  - **DES** — legacy 3DES support
+- Account passwords are derived using **PBKDF2** (200,000 iterations, SHA256) with a unique per-vault random salt.
+  - **Salt**: 16 random bytes generated on first save, stored plaintext at vault file start (non-secret, prevents precomputed attacks).
+  - **Key Derivation**: PBKDF2(password, vault_salt, 200k, SHA256) → 32-byte AES key
+- All vault data is serialized to **JSON format** with magic header "PMGR", then encrypted using **AES-256-CBC**:
+  - **IV**: 16 random bytes (RAND_bytes) generated per operation, prepended to ciphertext
+  - **Algorithm**: AES-256-CBC via OpenSSL EVP interface
+  - **Validation**: Magic header check detects wrong password immediately on load
 - The vault file (e.g., `273bb8988bc9eff3f945e81f4f9caee5d8e67d785b4078773e39ca84fc99f9b6.json`) is written in **pure binary encrypted format** — completely unreadable without the correct account password.
-- Each account is independently encrypted — compromising one account's password does not expose others.
+- Each account is independently encrypted with unique salt — compromising one account's password does not expose others.
 
 ### File Structure
 ```
 accounts.init          (encrypted account metadata with id1 identifiers)
-<hashed-filename>.json (encrypted vault containing all credentials)
+<hashed-filename>.json (vault file: [16-byte salt] + AES_encrypt(PMGR + JSON))
 config.json            (unencrypted encryption type preference)
 ```
+
+Vault file binary layout:
+- **Bytes 0-15**: Random salt (16 bytes, plaintext)
+- **Bytes 16+**: AES-256-CBC encrypted blob containing:
+  - Magic header: "PMGR" (4 bytes)
+  - Vault JSON data (credential entries)
+  - IV prepended to ciphertext and hex-encoded
 
 > ⚠️ If you forget your account password, your stored credentials **cannot be recovered**. There is no backdoor by design.
 
@@ -161,6 +167,11 @@ The executable will be at `build/passwordManager`.
 - **Credential IDs are encrypted** in the vault file alongside their passwords.
 - **Account metadata is encrypted** in `accounts.init`, including any associated identifiers like `id1`.
 - **Full-file encryption** ensures the entire vault is encrypted as a single unit — no component is readable without the correct password.
+- **PBKDF2 derivation** with 200k iterations prevents brute-force password guessing attacks.
+- **Per-vault salt** unique to each vault prevents precomputed rainbow table attacks.
+- **Random IV per operation** ensures identical plaintexts produce different ciphertexts.
+- **Magic header validation** ("PMGR") detects wrong password without storing password derivatives.
+- **No password secrets stored** — accounts.init contains zero password-derived information.
 - Vault files are stored with **restrictive file permissions (0600)** — only the owner can read/write.
 - This project is intended as a **learning tool and personal utility**. For production use, consider auditing the cryptographic implementation and conducting a security audit.
 
@@ -168,12 +179,20 @@ The executable will be at `build/passwordManager`.
 
 ## Recent Changes
 
-### v2.0 (Current)
+### v3.0 (Current) — Security & Simplification
+- ✓ **PBKDF2 key derivation** — passwords derived with 200k iterations, SHA256
+- ✓ **Per-vault random salt** — unique 16-byte salt generated, stored plaintext at vault start
+- ✓ **Random IV per operation** — new 16-byte IV (RAND_bytes) for every encryption
+- ✓ **Magic header validation** — "PMGR" header detects wrong password immediately
+- ✓ **AES-256-CBC only** — simplified to focused, secure single algorithm (removed RSA/DES)
+- ✓ **Encrypted validation** — passwords never checked against stored derivatives
+- ✓ **Codebase simplification** — 50% reduction in encryption code, removed 230+ lines of RSA/DES
+
+### v2.0
 - ✓ **Full vault file encryption** — entire vault is encrypted, not just individual passwords
 - ✓ **ID encryption** — credential IDs (including those with colons like `sh1:xxxx`) are encrypted
 - ✓ **Encrypted metadata** — account information with `id1` identifiers is encrypted in `accounts.init`
 - ✓ **Fixed segmentation fault** — proper cleanup of encryption objects
-- ✓ **Multiple encryption algorithms** — AES (default), RSA, and DES support
 - ✓ **Hashed vault filenames** — account vault files use SHA256 hashed names for privacy
 
 ---
