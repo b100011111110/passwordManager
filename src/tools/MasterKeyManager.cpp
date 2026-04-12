@@ -11,7 +11,7 @@
 #include <openssl/evp.h>
 #include <sys/stat.h>
 #include <unistd.h>
-
+#include <pwd.h>
 using std::string;
 using std::vector;
 using std::filesystem::path;
@@ -102,38 +102,65 @@ std::vector<unsigned char> MasterKeyManager::retrieveMasterKey() {
             return key;
         }
     } catch (const std::runtime_error& e) {
-        // Continue to error
+        throw std::runtime_error(string("Failed retrieve: ") + e.what());
     }
 
     throw std::runtime_error("Master key unavailable. Your data cannot be accessed.");
 }
 
 bool MasterKeyManager::sealToTPM(const vector<unsigned char>& key) {
+    char primaryCtxPath[] = "/tmp/pm_primary.ctx_XXXXXX";
+    int fd = mkstemp(primaryCtxPath);
+    if (fd == -1) return false;
+    close(fd);
+
     try {
         string hexKey = toHex(key);
         string pubPath = getTpmKeyPath() + ".pub";
         string privPath = getTpmKeyPath() + ".priv";
 
         // Create primary key
-        string cmd1 = "tpm2_createprimary -C o -G rsa -g sha256 -c /tmp/pm_primary.ctx 2>/dev/null";
+        string cmd1 = "tpm2_createprimary -C o -G rsa -g sha256 -c " + string(primaryCtxPath) + " 2>/dev/null";
         if (system(cmd1.c_str()) != 0) {
+            remove(primaryCtxPath);
             return false;
         }
 
-        // Create sealed object
-        string cmd2 = "echo '" + hexKey + "' | tpm2_create -C /tmp/pm_primary.ctx -L 'pcr:sha256:0,1,2,7' -i - -u '" + pubPath + "' -r '" + privPath + "' 2>/dev/null";
-        int result = system(cmd2.c_str());
+        // Create sealed object reading from stdin
+        string cmd2 = "tpm2_create -C " + string(primaryCtxPath) + " -L 'pcr:sha256:0,1,2,7' -i - -u '" + pubPath + "' -r '" + privPath + "' 2>/dev/null";
+        FILE* pipe = popen(cmd2.c_str(), "w");
+        if (!pipe) {
+            remove(primaryCtxPath);
+            return false;
+        }
+        
+        fwrite(hexKey.data(), 1, hexKey.size(), pipe);
+        int result = pclose(pipe);
 
         // Clean up
-        remove("/tmp/pm_primary.ctx");
+        remove(primaryCtxPath);
 
         return result == 0;
     } catch (...) {
+        remove(primaryCtxPath);
         return false;
     }
 }
 
 std::vector<unsigned char> MasterKeyManager::unsealFromTPM() {
+    char primaryCtxPath[] = "/tmp/pm_primary.ctx_XXXXXX";
+    int fd1 = mkstemp(primaryCtxPath);
+    if (fd1 == -1) throw std::runtime_error("Failed to create temp file");
+    close(fd1);
+
+    char loadedCtxPath[] = "/tmp/pm_loaded.ctx_XXXXXX";
+    int fd2 = mkstemp(loadedCtxPath);
+    if (fd2 == -1) {
+        remove(primaryCtxPath);
+        throw std::runtime_error("Failed to create temp file");
+    }
+    close(fd2);
+
     try {
         string pubPath = getTpmKeyPath() + ".pub";
         string privPath = getTpmKeyPath() + ".priv";
@@ -144,28 +171,25 @@ std::vector<unsigned char> MasterKeyManager::unsealFromTPM() {
         }
 
         // Create primary key
-        string cmd1 = "tpm2_createprimary -C o -G rsa -g sha256 -c /tmp/pm_primary.ctx 2>/dev/null";
+        string cmd1 = "tpm2_createprimary -C o -G rsa -g sha256 -c " + string(primaryCtxPath) + " 2>/dev/null";
         if (system(cmd1.c_str()) != 0) {
             throw std::runtime_error("TPM primary key creation failed");
         }
 
         // Load the sealed object
-        string cmd2 = "tpm2_load -C /tmp/pm_primary.ctx -u '" + pubPath + "' -r '" + privPath + "' -c /tmp/pm_loaded.ctx 2>/dev/null";
+        string cmd2 = "tpm2_load -C " + string(primaryCtxPath) + " -u '" + pubPath + "' -r '" + privPath + "' -c " + string(loadedCtxPath) + " 2>/dev/null";
         if (system(cmd2.c_str()) != 0) {
-            remove("/tmp/pm_primary.ctx");
             throw std::runtime_error("TPM load failed");
         }
 
         // Unseal
-        string cmd3 = "tpm2_unseal -c /tmp/pm_loaded.ctx -p pcr:sha256:0,1,2,7 2>/dev/null";
+        string cmd3 = "tpm2_unseal -c " + string(loadedCtxPath) + " -p pcr:sha256:0,1,2,7 2>/dev/null";
         FILE* pipe = popen(cmd3.c_str(), "r");
         if (!pipe) {
-            remove("/tmp/pm_primary.ctx");
-            remove("/tmp/pm_loaded.ctx");
             throw std::runtime_error("TPM unseal pipe failed");
         }
 
-        char buffer[65];  // 32 bytes * 2 + newline
+        char buffer[128];
         string output;
         if (fgets(buffer, sizeof(buffer), pipe)) {
             output = buffer;
@@ -177,18 +201,18 @@ std::vector<unsigned char> MasterKeyManager::unsealFromTPM() {
         pclose(pipe);
 
         // Clean up
-        remove("/tmp/pm_primary.ctx");
-        remove("/tmp/pm_loaded.ctx");
+        remove(primaryCtxPath);
+        remove(loadedCtxPath);
 
         if (output.empty()) {
             throw std::runtime_error("TPM unseal returned empty");
         }
 
         return fromHex(output);
-    } catch (const std::runtime_error& e) {
-        throw;
     } catch (...) {
-        throw std::runtime_error("TPM unseal failed");
+        remove(primaryCtxPath);
+        remove(loadedCtxPath);
+        throw;
     }
 }
 
@@ -236,18 +260,29 @@ bool MasterKeyManager::storeInEncryptedFile(const vector<unsigned char>& key) {
     try {
         // Generate machine-specific key from hostname + username
         string machineKey = "";
-        const char* hostname = getenv("HOSTNAME");
-        const char* user = getenv("USER");
-        if (hostname) machineKey += hostname;
-        if (user) machineKey += user;
+        char hostname[256];
+        if (gethostname(hostname, sizeof(hostname)) == 0) {
+            machineKey += hostname;
+        }
+        
+        struct passwd *pw = getpwuid(getuid());
+        if (pw && pw->pw_name) {
+            machineKey += pw->pw_name;
+        }
+        
         if (machineKey.empty()) machineKey = "default";
 
-        // Derive encryption key from machine-specific string
+        // Generate 16 byte salt
+        unsigned char salt[16];
+        if (!RAND_bytes(salt, sizeof(salt))) {
+            return false;
+        }
+
+        // Derive encryption key from machine-specific string using PBKDF2
         vector<unsigned char> fileKey(32);
-        if (!EVP_BytesToKey(EVP_aes_256_cbc(), EVP_sha256(), nullptr,
-                           reinterpret_cast<const unsigned char*>(machineKey.data()),
-                           static_cast<int>(machineKey.size()), 10000,  // 10,000 iterations
-                           fileKey.data(), nullptr)) {
+        if (PKCS5_PBKDF2_HMAC(machineKey.c_str(), machineKey.size(),
+                              salt, sizeof(salt), 200000,
+                              EVP_sha256(), 32, fileKey.data()) != 1) {
             return false;
         }
 
@@ -263,6 +298,7 @@ bool MasterKeyManager::storeInEncryptedFile(const vector<unsigned char>& key) {
         std::ofstream keyFile(keyFilePath, std::ios::binary);
         if (!keyFile) return false;
 
+        keyFile.write(reinterpret_cast<const char*>(salt), sizeof(salt));
         keyFile.write(encrypted.data(), encrypted.size());
         keyFile.close();
 
@@ -279,20 +315,17 @@ std::vector<unsigned char> MasterKeyManager::retrieveFromEncryptedFile() {
     try {
         // Generate machine-specific key from hostname + username
         string machineKey = "";
-        const char* hostname = getenv("HOSTNAME");
-        const char* user = getenv("USER");
-        if (hostname) machineKey += hostname;
-        if (user) machineKey += user;
-        if (machineKey.empty()) machineKey = "default";
-
-        // Derive encryption key from machine-specific string
-        vector<unsigned char> fileKey(32);
-        if (!EVP_BytesToKey(EVP_aes_256_cbc(), EVP_sha256(), nullptr,
-                           reinterpret_cast<const unsigned char*>(machineKey.data()),
-                           static_cast<int>(machineKey.size()), 10000,  // 10,000 iterations
-                           fileKey.data(), nullptr)) {
-            throw std::runtime_error("Failed to derive file encryption key");
+        char hostname[256];
+        if (gethostname(hostname, sizeof(hostname)) == 0) {
+            machineKey += hostname;
         }
+        
+        struct passwd *pw = getpwuid(getuid());
+        if (pw && pw->pw_name) {
+            machineKey += pw->pw_name;
+        }
+        
+        if (machineKey.empty()) machineKey = "default";
 
         // Read encrypted key from file
         string keyFilePath = getMetaPath();
@@ -303,9 +336,23 @@ std::vector<unsigned char> MasterKeyManager::retrieveFromEncryptedFile() {
             throw std::runtime_error("Master key file not found");
         }
 
+        unsigned char salt[16];
+        keyFile.read(reinterpret_cast<char*>(salt), sizeof(salt));
+        if (keyFile.gcount() != sizeof(salt)) {
+            throw std::runtime_error("Invalid master key file format");
+        }
+
         string encrypted((std::istreambuf_iterator<char>(keyFile)),
                         std::istreambuf_iterator<char>());
         keyFile.close();
+
+        // Derive encryption key from machine-specific string using PBKDF2
+        vector<unsigned char> fileKey(32);
+        if (PKCS5_PBKDF2_HMAC(machineKey.c_str(), machineKey.size(),
+                              salt, sizeof(salt), 200000,
+                              EVP_sha256(), 32, fileKey.data()) != 1) {
+            throw std::runtime_error("Failed to derive file encryption key");
+        }
 
         // Decrypt the master key
         AESEncryption aes;
