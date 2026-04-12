@@ -1,217 +1,102 @@
 # 🔐 Password Manager
 
-> A professional-grade, CLI-based password manager written in modern C++ — built with full-file encryption, clean OOP design, and local-first storage.
+> A professional-grade, CLI-based password manager written in C++ that enforces full-file encryption, clean architectural design, and a strictly local-first storage model.
 
 ---
 
-## Overview
+## 📖 Overview
 
-**PasswordManager** is a command-line password management tool built entirely in C++. It allows users to securely store, retrieve, and manage credentials with **full-file encryption**. Each account holds ID-password pairs that are encrypted alongside the entire vault file before being written to disk, ensuring your data is never stored in a human-readable format.
+**Password Manager** is a robust command-line interface (CLI) application built entirely in C++ that allows users to securely store, retrieve, and manage their credentials. It was designed from the ground up to demonstrate proficiency in **software architecture, applied cryptography, and systems programming**. 
 
-This project is designed as a structured learning journey through professional C++ development — covering object-oriented principles, encryption, file I/O, CLI design, and secure data handling.
+Unlike conventional managers that might store data in localized SQLite databases or easily exposed plaintext formats, this tool encrypts the *entire* storage backend. By leveraging OpenSSL and robust key derivation techniques, it ensures that your secrets—and the metadata associated with them—never touch the disk in an unprotected state. 
 
----
-
-## Features
-
-| Feature | Description |
-|---|---|
-| `create` | Create a new named account protected by a master password |
-| `delete` | Remove an account and all its stored credentials |
-| `add` | Store an ID-password pair inside an account |
-| `remove` | Remove a specific credential entry from an account |
-| `view` | Retrieve and display a stored password for a given ID |
-| **Full-File Encryption** | Entire vault file is encrypted with account password (AES-256) |
-| **Encrypted Metadata** | Account metadata (including `id1` identifiers) is encrypted |
-| **PBKDF2 Key Derivation** | Passwords are derived using PBKDF2 (200k iterations, SHA256) |
-| **Per-Vault Random Salt** | Each vault has unique random 16-byte salt stored plaintext |
-| **Random IV Per Operation** | Each encryption generates new random 16-byte IV |
-| **Magic Header Authentication** | "PMGR" header validates correct password on vault load |
-| Local Storage | No cloud, no internet — everything lives on your machine |
-| Binary Encryption Format | The storage file is completely encrypted and not human-readable |
+Whether you are here to review the codebase from an engineering perspective or looking to secure personal credentials safely, this project serves as a practical implementation of **modern C++ guidelines** and **industry-standard security practices**.
 
 ---
 
-## Usage
+## ✨ Key Features
 
-### Commands
+- **🛡️ Full-File Encryption**: The entire vault data, including your sensitive credential IDs and structural formatting, is rigorously encrypted as a single binary blob using **AES-256-CBC**.
+- **🔑 Strong Key Derivation**: Master passwords are never recorded or stored. The system derives a 256-bit cryptographic key via **PBKDF2-SHA256** utilizing 200,000 iterations to heavily mitigate brute-force attacks.
+- **🎲 Cryptographic Randomness**: A unique, per-vault 16-byte random salt is generated on creation to defeat rainbow tables. Furthermore, a fresh, truly random 16-byte Initialization Vector (IV) is utilized for *every* individual encryption operation.
+- **✅ Magic Header Validation**: Instead of comparing hashes to verify your credentials, the system attempts a live decryption of the vault. If the decrypted payload starts with the correct `PMGR` magic header, access is granted. Otherwise, it safely and instantly rejects the attempt.
+- **🕵️ Metadata Obfuscation**: Vault files are assigned **SHA-256 hashed filenames**. An attacker scanning the filesystem cannot map a given database file back to a specific user's account name.
+- **💻 Local-First Storage**: Zero telemetry analytics, no internet synchronization, and no external points of failure. Everything resides strictly on your machine.
 
+---
+
+## 🧠 Architecture & How it Works
+
+At its core, this project demonstrates how to safely manage sensitive user data within memory constraints and how to interact securely with low-level file I/O operations. Here is a brief look at the data lifecycle:
+
+### 1. Storage Structure
+Credentials are never stored in structured plaintext. They are dynamically populated into a serialized JSON payload using `nlohmann/json`. This structured format is then packaged entirely, encrypted, and flushed directly to disk as a raw binary blob, providing absolutely no human-readable context to external applications.
+
+### 2. Encryption and Authentication Pipeline
+When you initialize an account and save data:
+1. **Salt Generation**: The core runtime securely generates a 16-byte random salt using `RAND_bytes`.
+2. **Key Derivation**: When unlocking the vault, the user submits their master password. The software combines this with the file’s 16-byte salt and processes it through the PBKDF2 algorithm, deterministically returning a 256-bit AES cryptographic key.
+3. **Payload Construction**: The system prepends the `PMGR` magic header to the serialized credentials, and allocates a freshly generated 16-byte IV.
+4. **AES-256 Encryption**: The total payload is passed through the OpenSSL `EVP` interface, returning the encrypted buffer that is committed to disk.
+
+When you attempt to read from the account, the manager derives the key directly from the terminal input and attempts decryption. If the magic header `PMGR` does not align within the first 4 bytes of memory, the routine immediately halts.
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+To build and evaluate this project, you will need:
+- A C++ compiler with **C++17** support or later (e.g., GCC, Clang)
+- **CMake** (v3.10+) 
+- **OpenSSL** (core dependency for AES components and safe randomness)
+- **nlohmann/json** (widely supported modern JSON library for C++)
+
+### Compilation 
+This codebase utilizes CMake to enforce a clean and consistent cross-platform build process.
 ```bash
-# Create a new account (will prompt for password and encryption type)
-./passwordManager create <accountName>
-
-# Delete an existing account (will prompt for password)
-./passwordManager delete <accountName>
-
-# Add a credential to an account (will prompt for passwords)
-./passwordManager add <accountName> <id>
-
-# Remove a credential from an account (will prompt for password)
-./passwordManager remove <accountName> <id>
-
-# View a stored credential (will prompt for password, then display the password)
-./passwordManager view <accountName> <id>
-
-# Note: AES-256 is the only supported encryption method
-```
-
-### Examples
-
-```bash
-# Create account with AES-256 encryption
-$ ./passwordManager create myVault
-Enter account password: 
-Account created with aes encryption (encrypted vault filename).
-Account created successfully!
-
-# Add a credential with ID
-$ ./passwordManager add myVault "sh1:08c04eef88649ce2811ce0f447509fe30a05b2c6"
-Enter account password: 
-Enter password for user 'sh1:08c04eef88649ce2811ce0f447509fe30a05b2c6': 
-Password added.
-
-# View the credential
-$ ./passwordManager view myVault "sh1:08c04eef88649ce2811ce0f447509fe30a05b2c6"
-Enter account password: 
-Password for sh1:08c04eef88649ce2811ce0f447509fe30a05b2c6: (displays decrypted password)
-
-# Remove a credential
-$ ./passwordManager remove myVault "sh1:08c04eef88649ce2811ce0f447509fe30a05b2c6"
-Enter account password: 
-Password deleted.
-
-# Delete entire account
-$ ./passwordManager delete myVault
-Enter account password: 
-Account deleted.
-```
-
-
-## Encryption Design
-
-### Full-File Encryption
-- **Complete vault protection**: The entire vault file (containing all IDs and passwords) is encrypted as a single unit using the account password as the encryption key.
-- **ID protection**: Credential IDs (like `sh1:xxxx...`) are encrypted along with their passwords — not stored in plain text.
-- **Metadata encryption**: Account information is stored in an encrypted `accounts.init` file using a master key.
-
-### Encryption Mechanism
-- Account passwords are derived using **PBKDF2** (200,000 iterations, SHA256) with a unique per-vault random salt.
-  - **Salt**: 16 random bytes generated on first save, stored plaintext at vault file start (non-secret, prevents precomputed attacks).
-  - **Key Derivation**: PBKDF2(password, vault_salt, 200k, SHA256) → 32-byte AES key
-- All vault data is serialized to **JSON format** with magic header "PMGR", then encrypted using **AES-256-CBC**:
-  - **IV**: 16 random bytes (RAND_bytes) generated per operation, prepended to ciphertext
-  - **Algorithm**: AES-256-CBC via OpenSSL EVP interface
-  - **Validation**: Magic header check detects wrong password immediately on load
-- The vault file (e.g., `273bb8988bc9eff3f945e81f4f9caee5d8e67d785b4078773e39ca84fc99f9b6.json`) is written in **pure binary encrypted format** — completely unreadable without the correct account password.
-- Each account is independently encrypted with unique salt — compromising one account's password does not expose others.
-
-### File Structure
-```
-accounts.init          (encrypted account metadata with id1 identifiers)
-<hashed-filename>.json (vault file: [16-byte salt] + AES_encrypt(PMGR + JSON))
-config.json            (unencrypted encryption type preference)
-```
-
-Vault file binary layout:
-- **Bytes 0-15**: Random salt (16 bytes, plaintext)
-- **Bytes 16+**: AES-256-CBC encrypted blob containing:
-  - Magic header: "PMGR" (4 bytes)
-  - Vault JSON data (credential entries)
-  - IV prepended to ciphertext and hex-encoded
-
-> ⚠️ If you forget your account password, your stored credentials **cannot be recovered**. There is no backdoor by design.
-
----
-
-## Prerequisites
-
-- C++17 or later
-- CMake 3.10+
-- OpenSSL (for encryption)
-- nlohmann/json (for JSON handling)
-
-## Building
-
-```bash
+# Clone the repository and navigate into the root directory
 mkdir -p build && cd build
+
+# Configure and compile the project binary
 cmake ..
 make
 ```
 
-The executable will be at `build/passwordManager`.
+### Usage Instructions
+Once compiled successfully, the executable will be placed inside your `build` directory. Here is how you can interact with the CLI to manage your encrypted vaults.
 
-## Running
-
+#### Initializing an Account
+Create a new secure vault. The exact vault username remains obscured on-disk via SHA-256 hashing.
 ```bash
-# Create a new account
-./build/passwordManager create myAccount
-
-# Add a credential
-./build/passwordManager add myAccount myId
-
-# View a credential
-./build/passwordManager view myAccount myId
-
-# Remove a credential
-./build/passwordManager remove myAccount myId
-
-# Delete account
-./build/passwordManager delete myAccount
+./build/passwordManager create <accountName>
 ```
 
----
+#### Storing a Credential
+Add an identification string (e.g., an email address, username, or unique ID) and securely store the associated password inside the vault.
+```bash
+./build/passwordManager add <accountName> <credentialID>
+```
+*Note: The CLI will safely intercept your input, prompting you without screen echo to enter your vault master password and your newly targeted password.*
 
-## Security Notes
+#### Retrieving a Credential
+Decrypt the vault directly into memory and extract your saved password string securely to the terminal.
+```bash
+./build/passwordManager view <accountName> <credentialID>
+```
 
-- **Passwords are never logged** or printed to stdout beyond explicit `view` commands.
-- **Credential IDs are encrypted** in the vault file alongside their passwords.
-- **Account metadata is encrypted** in `accounts.init`, including any associated identifiers like `id1`.
-- **Full-file encryption** ensures the entire vault is encrypted as a single unit — no component is readable without the correct password.
-- **PBKDF2 derivation** with 200k iterations prevents brute-force password guessing attacks.
-- **Per-vault salt** unique to each vault prevents precomputed rainbow table attacks.
-- **Random IV per operation** ensures identical plaintexts produce different ciphertexts.
-- **Magic header validation** ("PMGR") detects wrong password without storing password derivatives.
-- **No password secrets stored** — accounts.init contains zero password-derived information.
-- Vault files are stored with **restrictive file permissions (0600)** — only the owner can read/write.
-- This project is intended as a **learning tool and personal utility**. For production use, consider auditing the cryptographic implementation and conducting a security audit.
+#### Removing a Credential
+Cleanly erase a specific credential record from your vault, actively regenerating the file's binary signature with a new IV.
+```bash
+./build/passwordManager remove <accountName> <credentialID>
+```
 
----
+#### Deleting an Account
+Completely and permanently shred your vault and all of its associated encrypted credentials from the filesystem.
+```bash
+./build/passwordManager delete <accountName>
+```
 
-## Recent Changes
-
-### v3.0 (Current) — Security & Simplification
-- ✓ **PBKDF2 key derivation** — passwords derived with 200k iterations, SHA256
-- ✓ **Per-vault random salt** — unique 16-byte salt generated, stored plaintext at vault start
-- ✓ **Random IV per operation** — new 16-byte IV (RAND_bytes) for every encryption
-- ✓ **Magic header validation** — "PMGR" header detects wrong password immediately
-- ✓ **AES-256-CBC only** — simplified to focused, secure single algorithm (removed RSA/DES)
-- ✓ **Encrypted validation** — passwords never checked against stored derivatives
-- ✓ **Codebase simplification** — 50% reduction in encryption code, removed 230+ lines of RSA/DES
-
-### v2.0
-- ✓ **Full vault file encryption** — entire vault is encrypted, not just individual passwords
-- ✓ **ID encryption** — credential IDs (including those with colons like `sh1:xxxx`) are encrypted
-- ✓ **Encrypted metadata** — account information with `id1` identifiers is encrypted in `accounts.init`
-- ✓ **Fixed segmentation fault** — proper cleanup of encryption objects
-- ✓ **Hashed vault filenames** — account vault files use SHA256 hashed names for privacy
+> **⚠️ Warning:** Because this tool acts with a strictly local-first and uncompromising encryption design, forgetting your master password means **your data cannot be recovered**. There are explicitly no hidden backdoors.
 
 ---
-
-## Contributing
-
-This project follows a stage-based development model. Contributions, suggestions, and code reviews are welcome after Stage 10 is complete.
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/your-feature`
-3. Commit with clear messages: `git commit -m "feat: add AES key derivation"`
-4. Open a pull request with a description of changes
-
----
-
-## License
-
-MIT License — see [LICENSE](LICENSE) for details.
-
----
-
-<p align="center">Built with C++ · Encrypted · Local-first · No telemetry</p>
