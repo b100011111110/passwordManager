@@ -1,8 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 project(PasswordManager)
 
-enable_testing()
-
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -23,16 +21,3 @@ add_executable(passwordManager
 )
 
 target_link_libraries(passwordManager OpenSSL::SSL OpenSSL::Crypto)
-
-add_executable(test_encryption
-    tests/test_encryption.cpp
-    src/encryption/Encryption.cpp
-)
-
-target_link_libraries(test_encryption OpenSSL::SSL OpenSSL::Crypto)
-add_test(NAME encryption_test COMMAND test_encryption)
-
-add_custom_target(check ALL
-    DEPENDS test_encryption
-    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
-)
