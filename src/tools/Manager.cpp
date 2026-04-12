@@ -101,10 +101,6 @@ PasswordManager::PasswordManager(Encryption* encryption)
     loadExistingAccounts();
 }
 
-string PasswordManager::getEncryptedFilename(const string& accountName) {
-    return hashAccountName(accountName);
-}
-
 void PasswordManager::loadExistingAccounts() {
     if (exists(path(ACCOUNTS_FILE))) {
         try {
@@ -121,22 +117,18 @@ void PasswordManager::loadExistingAccounts() {
             json accountsData = json::parse(decrypted);
 
             for (auto& [accName, accInfo] : accountsData.items()) {
-                string encryption = "aes";  // default
-                string id1 = "";  // id1 identifier
+                    string encryption = "aes";  // default
 
                 // Handle both old format (string) and new format (object)
                 if (accInfo.is_object()) {
                     if (accInfo.contains("encryption")) {
                         encryption = accInfo["encryption"].get<string>();
                     }
-                    if (accInfo.contains("id1")) {
-                        id1 = accInfo["id1"].get<string>();
-                    }
                 }
 
                 // Store only metadata, no plaintext passwords
                 string hashedFilename = hashAccountName(accName);
-                AccountMeta meta = {accName, hashedFilename, encryption, id1};
+                AccountMeta meta = {accName, hashedFilename, encryption};
                 accounts[accName] = meta;
             }
         } catch (...) {
@@ -151,8 +143,7 @@ void PasswordManager::saveAccountMetadata() {
     for (const auto& [accName, meta] : accounts) {
         // Store only metadata, no passwords
         accountsData[accName] = {
-            {"encryption", meta.encryptionType},
-            {"id1", meta.id1}
+            {"encryption", meta.encryptionType}
         };
     }
     // Encrypt and save with secure permissions
@@ -168,7 +159,7 @@ PasswordManager::~PasswordManager() {
     // No longer need to delete Account* objects since we store AccountMeta structs
 }
 
-bool PasswordManager::createAccount(string accName, string accPass, string encryptionType, string id1) {
+bool PasswordManager::createAccount(string accName, string accPass, string encryptionType) {
     if (accounts.find(accName) != accounts.end()) {
         cout << "Account already exists." << endl;
         return false;
@@ -186,7 +177,7 @@ bool PasswordManager::createAccount(string accName, string accPass, string encry
         delete tempAccount;  // Clean up temporary object
         
         // Store only metadata in memory
-        AccountMeta meta = {accName, hashedFilename, type, id1};
+        AccountMeta meta = {accName, hashedFilename, type};
         accounts[accName] = meta;
         
         // Save account metadata (encrypted, no passwords)

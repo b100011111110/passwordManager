@@ -28,7 +28,7 @@ class LocalAccount : public Account {
     string password;
     string filePath;
     std::vector<unsigned char> encryptionKey;  // 32-byte derived key
-    unsigned char vault_salt[16];              // 16-byte salt from vault file
+    unsigned char vault_salt[16] = {};         // 16-byte salt from vault file
     Encryption* encryptionStandard;
     vector<string> vault;
 

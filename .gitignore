@@ -3,7 +3,8 @@
 ./accounts.init
 # Private data
 data.init
-*.json
+config.json
+master.key
 
 # Build directories
 build/

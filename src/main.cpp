@@ -81,7 +81,7 @@ int main(int argc, char* argv[]) {
         PasswordManager mgr(encryption);
 
         string command = argv[1];
-        string acountName = argc > 2 ? argv[2] : "";
+        string accountName = argc > 2 ? argv[2] : "";
         string accountPassword = argc > 3 ? argv[3] : "";
 
         // check if the command is valid
@@ -108,7 +108,7 @@ int main(int argc, char* argv[]) {
             // Use AES encryption (only supported encryption type)
             string encType = "aes";
 
-            if (mgr.createAccount(acountName, accountPassword, encType)) {
+            if (mgr.createAccount(accountName, accountPassword, encType)) {
                 cout << "Account created successfully!" << endl;
             }
         }
@@ -123,7 +123,7 @@ int main(int argc, char* argv[]) {
             cout << "Enter account password: ";
             accountPassword = readPasswordHidden();
 
-            bool x = mgr.deleteAccount(acountName, accountPassword);
+            bool x = mgr.deleteAccount(accountName, accountPassword);
             if(x){
                 cout << "Account deleted successfully!" << endl;
             }
@@ -148,7 +148,7 @@ int main(int argc, char* argv[]) {
             cout << "Enter password for user '" << username << "': ";
             string password = readPasswordHidden();
 
-            mgr.addPassword(acountName, accountPassword, username, password);
+            mgr.addPassword(accountName, accountPassword, username, password);
         }
         else if(command == "remove"){
             if (argc != 4) {
@@ -162,7 +162,7 @@ int main(int argc, char* argv[]) {
             cout << "Enter account password: ";
             accountPassword = readPasswordHidden();
 
-            bool x = mgr.deletePassword(acountName, accountPassword, username);
+            bool x = mgr.deletePassword(accountName, accountPassword, username);
             if(x){
                 cout << "Password deleted successfully!" << endl;
             }
@@ -182,7 +182,7 @@ int main(int argc, char* argv[]) {
             cout << "Enter account password: ";
             accountPassword = readPasswordHidden();
 
-            bool x = mgr.viewPasswords(acountName, accountPassword, username);
+            bool x = mgr.viewPasswords(accountName, accountPassword, username);
             if(!x){
                 cout << "Failed to view passwords!" << endl;
             }

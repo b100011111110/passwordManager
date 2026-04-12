@@ -17,7 +17,6 @@ struct AccountMeta {
     string accountName;
     string hashedFilename;
     string encryptionType;
-    string id1;  // Additional identifier if needed
 };
 
 // Helper functions for encryption selection
@@ -33,7 +32,6 @@ private:
 
     void loadExistingAccounts();
     void saveAccountMetadata();
-    string getEncryptedFilename(const string& accountName);  // New: get hashed filename
 
     // Account data encryption/decryption using hardware-protected master key
     string encryptAccountsData(const string& plaintext);
@@ -52,7 +50,7 @@ public:
         view passwords
     */
 
-    bool createAccount(string accName, string accPass, string encryptionType, string id1 = "");
+    bool createAccount(string accName, string accPass, string encryptionType);
 
     bool deleteAccount(string accName, string accPass);
 
