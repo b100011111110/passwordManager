@@ -1,6 +1,10 @@
 # 🔐 Password Manager
 
-> A professional-grade, CLI-based password manager written in C++ that enforces full-file encryption, clean architectural design, and a strictly local-first storage model.
+> A professional-grade, CLI-based password manager written in C++ that enforces full-file encryption, hardware-backed key sealing, clean architectural design, and a strictly local-first storage model.
+
+![C++17](https://img.shields.io/badge/C++-17-blue.svg)
+![OpenSSL](https://img.shields.io/badge/OpenSSL-Cryptography-red.svg)
+![License](https://img.shields.io/badge/License-MIT-green.svg)
 
 ---
 
@@ -8,7 +12,7 @@
 
 **Password Manager** is a robust command-line interface (CLI) application built entirely in C++ that allows users to securely store, retrieve, and manage their credentials. It was designed from the ground up to demonstrate proficiency in **software architecture, applied cryptography, and systems programming**. 
 
-Unlike conventional managers that might store data in localized SQLite databases or easily exposed plaintext formats, this tool encrypts the *entire* storage backend. By leveraging OpenSSL and robust key derivation techniques, it ensures that your secrets—and the metadata associated with them—never touch the disk in an unprotected state. 
+Unlike conventional managers that might store data in localized SQLite databases or easily exposed plaintext formats, this tool encrypts the *entire* storage backend. By leveraging OpenSSL, TPM 2.0 integration, and robust key derivation techniques, it ensures that your secrets—and the metadata associated with them—never touch the disk in an unprotected state. It does not rely on the cloud. Your keys, your data.
 
 Whether you are here to review the codebase from an engineering perspective or looking to secure personal credentials safely, this project serves as a practical implementation of **modern C++ guidelines** and **industry-standard security practices**.
 
@@ -17,17 +21,18 @@ Whether you are here to review the codebase from an engineering perspective or l
 ## ✨ Key Features
 
 - **🛡️ Full-File Encryption**: The entire vault data, including your sensitive credential IDs and structural formatting, is rigorously encrypted as a single binary blob using **AES-256-CBC**.
+- **🔒 Hardware-Backed Master Keys**: Integrates with TPM 2.0 (`tpm2-tools`) and Linux Secret Service (`libsecret`) for secure key sealing, tying the vault securely to your physical hardware.
 - **🔑 Strong Key Derivation**: Master passwords are never recorded or stored. The system derives a 256-bit cryptographic key via **PBKDF2-SHA256** utilizing 200,000 iterations to heavily mitigate brute-force attacks.
-- **🎲 Cryptographic Randomness**: A unique, per-vault 16-byte random salt is generated on creation to defeat rainbow tables. Furthermore, a fresh, truly random 16-byte Initialization Vector (IV) is utilized for *every* individual encryption operation.
+- **🎲 Cryptographic Randomness**: A unique, per-vault 16-byte random salt is generated on creation to defeat rainbow tables. Furthermore, a fresh, truly random 16-byte Initialization Vector (IV) is utilized for *every* individual encryption operation via `RAND_bytes`.
 - **✅ Magic Header Validation**: Instead of comparing hashes to verify your credentials, the system attempts a live decryption of the vault. If the decrypted payload starts with the correct `PMGR` magic header, access is granted. Otherwise, it safely and instantly rejects the attempt.
-- **🕵️ Metadata Obfuscation**: Vault files are assigned **SHA-256 hashed filenames**. An attacker scanning the filesystem cannot map a given database file back to a specific user's account name.
+- **🕵️ Stealth Terminal UI**: Features real-time masked password inputs and strict terminal mode handling via POSIX `termios`.
 - **💻 Local-First Storage**: Zero telemetry analytics, no internet synchronization, and no external points of failure. Everything resides strictly on your machine.
 
 ---
 
 ## 🧠 Architecture & How it Works
 
-At its core, this project demonstrates how to safely manage sensitive user data within memory constraints and how to interact securely with low-level file I/O operations. Here is a brief look at the data lifecycle:
+At its core, this project demonstrates how to safely manage sensitive user data within memory constraints and how to interact securely with low-level file I/O operations and hardware modules. Here is a brief look at the data lifecycle:
 
 ### 1. Storage Structure
 Credentials are never stored in structured plaintext. They are dynamically populated into a serialized JSON payload using `nlohmann/json`. This structured format is then packaged entirely, encrypted, and flushed directly to disk as a raw binary blob, providing absolutely no human-readable context to external applications.
@@ -35,11 +40,13 @@ Credentials are never stored in structured plaintext. They are dynamically popul
 ### 2. Encryption and Authentication Pipeline
 When you initialize an account and save data:
 1. **Salt Generation**: The core runtime securely generates a 16-byte random salt using `RAND_bytes`.
-2. **Key Derivation**: When unlocking the vault, the user submits their master password. The software combines this with the file’s 16-byte salt and processes it through the PBKDF2 algorithm, deterministically returning a 256-bit AES cryptographic key.
+2. **Key Derivation & Sealing**: When unlocking the vault, the user submits their master password. The software combines this with the file’s 16-byte salt and processes it through the PBKDF2 algorithm, deterministically returning a 256-bit AES cryptographic key. The system also attempts to seal master metadata keys to the machine's TPM (Platform Configuration Registers).
 3. **Payload Construction**: The system prepends the `PMGR` magic header to the serialized credentials, and allocates a freshly generated 16-byte IV.
 4. **AES-256 Encryption**: The total payload is passed through the OpenSSL `EVP` interface, returning the encrypted buffer that is committed to disk.
 
 When you attempt to read from the account, the manager derives the key directly from the terminal input and attempts decryption. If the magic header `PMGR` does not align within the first 4 bytes of memory, the routine immediately halts.
+
+> **Note on Production Readiness**: While robust, this is a portfolio project. To transition to enterprise production, system shell calls (`popen()`) would be replaced by direct TSS library bindings (`libtss2-esys`), and custom memory allocators (`mlock`, `explicit_bzero`) would be implemented to prevent string retention in RAM.
 
 ---
 
@@ -51,6 +58,7 @@ To build and evaluate this project, you will need:
 - **CMake** (v3.10+) 
 - **OpenSSL** (core dependency for AES components and safe randomness)
 - **nlohmann/json** (widely supported modern JSON library for C++)
+- *Optional:* `tpm2-tools` and `libsecret-tools`
 
 ### Compilation 
 This codebase utilizes CMake to enforce a clean and consistent cross-platform build process.
@@ -100,3 +108,21 @@ Completely and permanently shred your vault and all of its associated encrypted 
 > **⚠️ Warning:** Because this tool acts with a strictly local-first and uncompromising encryption design, forgetting your master password means **your data cannot be recovered**. There are explicitly no hidden backdoors.
 
 ---
+
+## 🛠️ Project Structure
+
+```text
+src/
+├── main.cpp                 # CLI argument parsing and strict POSIX terminal control
+├── tools/
+│   ├── Manager.cpp          # Vault lifecycle and AES payload serialization
+│   ├── Accounts.cpp         # LocalAccount implementation and PBKDF2 derivation
+│   └── MasterKeyManager.cpp # TPM/libsecret sealing and hardware boundaries
+└── encryption/
+    └── Encryption.cpp       # OpenSSL EVP abstractions and RAII memory cleanup
+```
+
+---
+<p align="center">
+  <i>Built to demonstrate clean architecture, robust system design, and applied cryptography in C++.</i>
+</p>
