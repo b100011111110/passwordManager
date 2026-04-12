@@ -219,8 +219,15 @@ std::vector<unsigned char> MasterKeyManager::unsealFromTPM() {
 bool MasterKeyManager::storeInLibsecret(const vector<unsigned char>& key) {
     try {
         string hexKey = toHex(key);
-        string cmd = "echo '" + hexKey + "' | secret-tool store --label='passwordManager master key' application passwordManager key master 2>/dev/null";
-        return system(cmd.c_str()) == 0;
+        string cmd = "secret-tool store --label='passwordManager master key' application passwordManager key master 2>/dev/null";
+        FILE* pipe = popen(cmd.c_str(), "w");
+        if (!pipe) {
+            return false;
+        }
+        fputs(hexKey.c_str(), pipe);
+        fputs("\n", pipe);
+        int status = pclose(pipe);
+        return status == 0;
     } catch (...) {
         return false;
     }
