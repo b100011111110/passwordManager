@@ -29,7 +29,7 @@ class LocalAccount : public Account {
   std::vector<unsigned char> encryptionKey; // 32-byte derived key
   unsigned char vault_salt[16] = {};        // 16-byte salt from vault file
   Encryption *encryptionStandard;
-  vector<string> vault;
+  std::map<string, string> vault;
 
 public:
   string username;
@@ -66,7 +66,7 @@ public:
       return false;
     }
     string encryptedIdPassword = encryptPassword(idPassword);
-    vault.push_back(id + "|" + encryptedIdPassword);
+    vault[id] = encryptedIdPassword;
     saveVault();
     return true;
   }
@@ -75,12 +75,10 @@ public:
     if (!validateAccountPassword(userPassword)) {
       return false;
     }
-    for (auto it = vault.begin(); it != vault.end(); ++it) {
-      if (it->substr(0, it->find('|')) == id) {
-        vault.erase(it);
-        saveVault();
-        return true;
-      }
+    if (vault.find(id) != vault.end()) {
+      vault.erase(id);
+      saveVault();
+      return true;
     }
     return false;
   }
@@ -89,13 +87,10 @@ public:
     if (!validateAccountPassword(userPassword)) {
       return false;
     }
-    for (const auto &entry : vault) {
-      if (entry.substr(0, entry.find('|')) == id) {
-        string encryptedPassword = entry.substr(entry.find('|') + 1);
-        cout << "Password for " << id << ": "
-             << decryptPassword(encryptedPassword) << endl;
-        return true;
-      }
+    if (vault.find(id) != vault.end()) {
+      cout << "Password for " << id << ": "
+           << decryptPassword(vault[id]) << endl;
+      return true;
     }
     return false;
   }
@@ -116,10 +111,10 @@ private:
   }
 
   void saveVault() {
-    // Create JSON array of entries
-    json vaultData = json::array();
-    for (const auto &entry : vault) {
-      vaultData.push_back(entry);
+    // Create JSON object of entries
+    json vaultData = json::object();
+    for (const auto &[id, crypt] : vault) {
+      vaultData[id] = crypt;
     }
 
     // Serialize to string
@@ -200,8 +195,20 @@ private:
       json vaultData = json::parse(plaintextJson);
 
       vault.clear();
-      for (const auto &entry : vaultData) {
-        vault.push_back(entry.get<string>());
+      
+      // Backward compatibility with older array formats
+      if (vaultData.is_array()) {
+        for (const auto &entry : vaultData) {
+          string s = entry.get<string>();
+          size_t pos = s.find('|');
+          if (pos != string::npos) {
+            vault[s.substr(0, pos)] = s.substr(pos + 1);
+          }
+        }
+      } else if (vaultData.is_object()) {
+        for (auto& el : vaultData.items()) {
+          vault[el.key()] = el.value().get<string>();
+        }
       }
     } catch (const std::runtime_error &e) {
       // Re-throw password errors
