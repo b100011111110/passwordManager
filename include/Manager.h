@@ -1,44 +1,40 @@
 #ifndef MANAGER_H
 #define MANAGER_H
 
-#include <iostream>
 #include <string>
+#include <vector>
 #include <map>
 #include <memory>
 #include "Accounts.h"
 #include "encryption.h"
 
-using std::string;
-using std::cout;
-using std::endl;
-
 // Account metadata structure (no plaintext passwords stored)
 struct AccountMeta {
-    string accountName;
-    string hashedFilename;
-    string encryptionType;
+    std::string accountName;
+    std::string hashedFilename;
+    std::string encryptionType;
 };
 
 // Helper functions for encryption selection
-string getEncryptionTypeFromConfig();
-void saveEncryptionTypeToConfig(const string& encType);
-Encryption* createEncryptionObject(const string& type);
+std::string getEncryptionTypeFromConfig();
+void saveEncryptionTypeToConfig(const std::string& encType);
+std::unique_ptr<Encryption> createEncryptionObject(const std::string& type);
 
 class PasswordManager {
 private:
-    std::map<string, AccountMeta> accounts;  // Changed from Account* to AccountMeta
-    Encryption* encryptionStandard;
+    std::map<std::string, AccountMeta> accounts;  // Changed from Account* to AccountMeta
+    std::unique_ptr<Encryption> encryptionStandard;
     std::vector<unsigned char> masterKey;
 
     void loadExistingAccounts();
     void saveAccountMetadata();
 
     // Account data encryption/decryption using hardware-protected master key
-    string encryptAccountsData(const string& plaintext);
-    string decryptAccountsData(const string& ciphertext);
+    std::string encryptAccountsData(const std::string& plaintext);
+    std::string decryptAccountsData(const std::string& ciphertext);
 
 public:
-    PasswordManager(Encryption* encryption);
+    PasswordManager(std::unique_ptr<Encryption> encryption);
 
     /*
     this is a class that will manage the password manager,
@@ -50,21 +46,21 @@ public:
         view passwords
     */
 
-    bool createAccount(string accName, string accPass, string encryptionType);
+    bool createAccount(std::string accName, std::string accPass, std::string encryptionType);
 
-    bool deleteAccount(string accName, string accPass);
+    bool deleteAccount(std::string accName, std::string accPass);
 
-    void addPassword(string accName, string accPass, string user, string pass);
+    void addPassword(std::string accName, std::string accPass, std::string user, std::string pass);
 
-    bool deletePassword(string accName, string accPass, string user);
+    bool deletePassword(std::string accName, std::string accPass, std::string user);
 
-    bool viewPasswords(string accName, string accPass, string user);
+    bool viewPasswords(std::string accName, std::string accPass, std::string user);
 
-    bool setEncryption(string encryptionType);
+    bool setEncryption(std::string encryptionType);
 
-    string getEncryption() const;
+    std::string getEncryption() const;
 
-    ~PasswordManager();  // No longer needs to delete Account* objects
+    ~PasswordManager() = default;
 
     // We will add the rest of the methods in Stage 2
 };

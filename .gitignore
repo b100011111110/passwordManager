@@ -1,9 +1,10 @@
 ./a.out
 ./plan.txt
 ./accounts.init
+accounts.init
 # Private data
 data.init
-config.json
+*.json
 master.key
 
 # Build directories
