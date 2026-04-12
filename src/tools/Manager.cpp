@@ -3,11 +3,15 @@
 #include <filesystem>
 #include <fstream>
 #include <algorithm>
+#include <iostream>
+#include <memory>
+#include <stdexcept>
 #include <nlohmann/json.hpp>
 #include <sys/stat.h>
 #include <sstream>
 #include <iomanip>
 #include <openssl/sha.h>
+#include <openssl/evp.h>
 
 using json = nlohmann::json;
 using std::filesystem::exists;
@@ -16,9 +20,30 @@ using std::filesystem::path;
 using std::filesystem::directory_iterator;
 using std::ifstream;
 using std::ofstream;
+using std::string;
+using std::cout;
+using std::endl;
 
-const string ACCOUNTS_FILE = "accounts.init";
-const string CONFIG_FILE = "config.json";
+std::string getDataDirectory() {
+    const char* home = getenv("HOME");
+    if (!home) {
+        throw std::runtime_error("HOME environment variable not set");
+    }
+    std::string dir = std::string(home) + "/.local/share/passwordManager";
+    if (!exists(path(dir))) {
+        std::filesystem::create_directories(path(dir));
+        chmod(dir.c_str(), S_IRWXU);
+    }
+    return dir + "/";
+}
+
+inline std::string getAccountsFilePath() {
+    return getDataDirectory() + "accounts.init";
+}
+
+inline std::string getConfigFilePath() {
+    return getDataDirectory() + "config.json";
+}
 
 // Set restrictive file permissions (0600 = owner read/write only)
 void setSecureFilePermissions(const string& filename) {
@@ -39,24 +64,29 @@ string PasswordManager::decryptAccountsData(const string& ciphertext) {
 
 // Generate SHA256 hash of account name for encrypted filename
 string hashAccountName(const string& accountName) {
-    unsigned char hash[SHA256_DIGEST_LENGTH];
-    SHA256_CTX sha256;
-    SHA256_Init(&sha256);
-    SHA256_Update(&sha256, (unsigned char*)accountName.c_str(), accountName.length());
-    SHA256_Final(hash, &sha256);
+    unsigned char hash[EVP_MAX_MD_SIZE];
+    unsigned int lengthOfHash = 0;
+
+    EVP_MD_CTX* mdctx = EVP_MD_CTX_new();
+    if(mdctx) {
+        EVP_DigestInit_ex(mdctx, EVP_sha256(), nullptr);
+        EVP_DigestUpdate(mdctx, accountName.c_str(), accountName.length());
+        EVP_DigestFinal_ex(mdctx, hash, &lengthOfHash);
+        EVP_MD_CTX_free(mdctx);
+    }
 
     std::stringstream ss;
-    for(int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
+    for(unsigned int i = 0; i < lengthOfHash; i++) {
         ss << std::hex << std::setw(2) << std::setfill('0') << (int)hash[i];
     }
-    return ss.str() + ".json";
+    return getDataDirectory() + ss.str() + ".json";
 }
 
 string getEncryptionTypeFromConfig() {
-    if (exists(path(CONFIG_FILE))) {
+    if (exists(path(getConfigFilePath()))) {
         try {
             json config;
-            ifstream in(CONFIG_FILE);
+            ifstream in(getConfigFilePath());
             in >> config;
             if (config.contains("encryptionType")) {
                 return config["encryptionType"].get<string>();
@@ -70,9 +100,9 @@ string getEncryptionTypeFromConfig() {
 
 void saveEncryptionTypeToConfig(const string& encType) {
     json config;
-    if (exists(path(CONFIG_FILE))) {
+    if (exists(path(getConfigFilePath()))) {
         try {
-            ifstream in(CONFIG_FILE);
+            ifstream in(getConfigFilePath());
             in >> config;
         } catch (...) {
             config = json::object();
@@ -81,17 +111,20 @@ void saveEncryptionTypeToConfig(const string& encType) {
         config = json::object();
     }
     config["encryptionType"] = encType;
-    ofstream out(CONFIG_FILE);
+    ofstream out(getConfigFilePath());
     out << config.dump(4);
 }
 
-Encryption* createEncryptionObject(const string& type) {
+std::unique_ptr<Encryption> createEncryptionObject(const std::string& type) {
     // Only AES encryption is supported
-    return new AESEncryption();
+    return std::make_unique<AESEncryption>();
 }
 
-PasswordManager::PasswordManager(Encryption* encryption)
-    : encryptionStandard(encryption) {
+PasswordManager::PasswordManager(std::unique_ptr<Encryption> encryption)
+    : encryptionStandard(std::move(encryption)) {
+    if (!encryptionStandard) {
+        throw std::invalid_argument("Encryption object is null");
+    }
     try {
         masterKey = MasterKeyManager::getMasterKey();
     } catch (const std::runtime_error& e) {
@@ -102,10 +135,10 @@ PasswordManager::PasswordManager(Encryption* encryption)
 }
 
 void PasswordManager::loadExistingAccounts() {
-    if (exists(path(ACCOUNTS_FILE))) {
+    if (exists(path(getAccountsFilePath()))) {
         try {
             // Read encrypted data from file
-            std::ifstream infile(ACCOUNTS_FILE, std::ios::binary);
+            std::ifstream infile(getAccountsFilePath(), std::ios::binary);
             std::string encryptedData((std::istreambuf_iterator<char>(infile)),
                                       std::istreambuf_iterator<char>());
             infile.close();
@@ -149,14 +182,10 @@ void PasswordManager::saveAccountMetadata() {
     // Encrypt and save with secure permissions
     string plaintextJson = accountsData.dump(4);
     string encryptedJson = encryptAccountsData(plaintextJson);
-    ofstream out(ACCOUNTS_FILE, std::ios::binary);
+    ofstream out(getAccountsFilePath(), std::ios::binary);
     out.write(encryptedJson.c_str(), encryptedJson.length());
     out.close();
-    setSecureFilePermissions(ACCOUNTS_FILE);
-}
-
-PasswordManager::~PasswordManager() {
-    // No longer need to delete Account* objects since we store AccountMeta structs
+    setSecureFilePermissions(getAccountsFilePath());
 }
 
 bool PasswordManager::createAccount(string accName, string accPass, string encryptionType) {
@@ -173,7 +202,7 @@ bool PasswordManager::createAccount(string accName, string accPass, string encry
     string hashedFilename = hashAccountName(accName);
     try {
         // Create account object temporarily to validate and create vault file
-        Account* tempAccount = createLocalAccount(accName, accPass, hashedFilename, encryptionStandard);
+        Account* tempAccount = createLocalAccount(accName, accPass, hashedFilename, encryptionStandard.get());
         delete tempAccount;  // Clean up temporary object
         
         // Store only metadata in memory
@@ -203,7 +232,7 @@ bool PasswordManager::deleteAccount(string accName, string accPass) {
     // Create account object temporarily to validate password
     Account* tempAccount = nullptr;
     try {
-        tempAccount = createLocalAccount(accName, accPass, meta.hashedFilename, encryptionStandard);
+        tempAccount = createLocalAccount(accName, accPass, meta.hashedFilename, encryptionStandard.get());
         // If we get here, password is valid
         delete tempAccount;
         tempAccount = nullptr;
@@ -245,7 +274,7 @@ void PasswordManager::addPassword(string accName, string accPass, string user, s
     // Create account object temporarily to perform operation
     Account* account = nullptr;
     try {
-        account = createLocalAccount(accName, accPass, meta.hashedFilename, encryptionStandard);
+        account = createLocalAccount(accName, accPass, meta.hashedFilename, encryptionStandard.get());
         
         if (account->addPassword(accPass, user, pass)) {
             cout << "Password added." << endl;
@@ -271,7 +300,7 @@ bool PasswordManager::deletePassword(string accName, string accPass, string user
     // Create account object temporarily to perform operation
     Account* account = nullptr;
     try {
-        account = createLocalAccount(accName, accPass, meta.hashedFilename, encryptionStandard);
+        account = createLocalAccount(accName, accPass, meta.hashedFilename, encryptionStandard.get());
         
         if (account->deletePassword(accPass, user)) {
             cout << "Password deleted." << endl;
@@ -300,7 +329,7 @@ bool PasswordManager::viewPasswords(string accName, string accPass, string user)
     // Create account object temporarily to perform operation
     Account* account = nullptr;
     try {
-        account = createLocalAccount(accName, accPass, meta.hashedFilename, encryptionStandard);
+        account = createLocalAccount(accName, accPass, meta.hashedFilename, encryptionStandard.get());
         
         if (user.empty()) {
             cout << "Viewing all passwords - feature not fully implemented" << endl;
