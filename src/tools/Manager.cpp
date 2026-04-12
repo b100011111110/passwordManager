@@ -113,6 +113,10 @@ void saveEncryptionTypeToConfig(const string& encType) {
     config["encryptionType"] = encType;
     ofstream out(getConfigFilePath());
     out << config.dump(4);
+    out.close();
+
+    // Secure the file preventing public observation access (0600)
+    chmod(getConfigFilePath().c_str(), S_IRUSR | S_IWUSR);
 }
 
 std::unique_ptr<Encryption> createEncryptionObject(const std::string& type) {

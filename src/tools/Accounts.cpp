@@ -8,6 +8,7 @@
 #include <openssl/rand.h>
 #include <openssl/sha.h>
 #include <vector>
+#include <sys/stat.h>
 
 using json = nlohmann::json;
 using std::cout;
@@ -142,6 +143,9 @@ private:
     // Write encrypted data
     out.write(encryptedData.c_str(), encryptedData.length());
     out.close();
+
+    // Secure the file preventing public observation access (0600)
+    chmod(filePath.c_str(), S_IRUSR | S_IWUSR);
   }
 
   void loadVault() {
