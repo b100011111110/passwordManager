@@ -127,7 +127,7 @@ bool MasterKeyManager::sealToTPM(const vector<unsigned char>& key) {
         }
 
         // Create sealed object reading from stdin
-        string cmd2 = "tpm2_create -C " + string(primaryCtxPath) + " -L 'pcr:sha256:0,1,2,7' -i - -u '" + pubPath + "' -r '" + privPath + "' 2>/dev/null";
+        string cmd2 = "tpm2_create -C " + string(primaryCtxPath) + " -L \"pcr:sha256:0,1,2,7\" -u \"" + pubPath + "\" -r \"" + privPath + "\" -i- 2>/dev/null";
         FILE* pipe = popen(cmd2.c_str(), "w");
         if (!pipe) {
             remove(primaryCtxPath);
@@ -177,7 +177,7 @@ std::vector<unsigned char> MasterKeyManager::unsealFromTPM() {
         }
 
         // Load the sealed object
-        string cmd2 = "tpm2_load -C " + string(primaryCtxPath) + " -u '" + pubPath + "' -r '" + privPath + "' -c " + string(loadedCtxPath) + " 2>/dev/null";
+        string cmd2 = "tpm2_load -C " + string(primaryCtxPath) + " -u \"" + pubPath + "\" -r \"" + privPath + "\" -c " + string(loadedCtxPath) + " 2>/dev/null";
         if (system(cmd2.c_str()) != 0) {
             throw std::runtime_error("TPM load failed");
         }
