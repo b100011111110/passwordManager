@@ -229,16 +229,11 @@ bool PasswordManager::deleteAccount(string accName, string accPass) {
 
     AccountMeta meta = accounts[accName];
     
-    // Create account object temporarily to validate password
-    Account* tempAccount = nullptr;
     try {
-        tempAccount = createLocalAccount(accName, accPass, meta.hashedFilename, encryptionStandard.get());
+        std::unique_ptr<Account> tempAccount(createLocalAccount(accName, accPass, meta.hashedFilename, encryptionStandard.get()));
         // If we get here, password is valid
-        delete tempAccount;
-        tempAccount = nullptr;
     } catch (const std::runtime_error& e) {
         cout << "Invalid account or password." << endl;
-        if (tempAccount) delete tempAccount;
         return false;
     }
 
@@ -271,21 +266,16 @@ void PasswordManager::addPassword(string accName, string accPass, string user, s
 
     AccountMeta meta = accounts[accName];
     
-    // Create account object temporarily to perform operation
-    Account* account = nullptr;
     try {
-        account = createLocalAccount(accName, accPass, meta.hashedFilename, encryptionStandard.get());
+        std::unique_ptr<Account> account(createLocalAccount(accName, accPass, meta.hashedFilename, encryptionStandard.get()));
         
         if (account->addPassword(accPass, user, pass)) {
             cout << "Password added." << endl;
         } else {
             cout << "Failed to add password." << endl;
         }
-        
-        delete account;
     } catch (const std::runtime_error& e) {
         cout << "Invalid account or password." << endl;
-        if (account) delete account;
     }
 }
 
@@ -297,23 +287,18 @@ bool PasswordManager::deletePassword(string accName, string accPass, string user
 
     AccountMeta meta = accounts[accName];
     
-    // Create account object temporarily to perform operation
-    Account* account = nullptr;
     try {
-        account = createLocalAccount(accName, accPass, meta.hashedFilename, encryptionStandard.get());
+        std::unique_ptr<Account> account(createLocalAccount(accName, accPass, meta.hashedFilename, encryptionStandard.get()));
         
         if (account->deletePassword(accPass, user)) {
             cout << "Password deleted." << endl;
-            delete account;
             return true;
         } else {
             cout << "Password not found." << endl;
-            delete account;
             return false;
         }
     } catch (const std::runtime_error& e) {
         cout << "Invalid account or password." << endl;
-        if (account) delete account;
         return false;
     }
 }
@@ -326,23 +311,18 @@ bool PasswordManager::viewPasswords(string accName, string accPass, string user)
 
     AccountMeta meta = accounts[accName];
     
-    // Create account object temporarily to perform operation
-    Account* account = nullptr;
     try {
-        account = createLocalAccount(accName, accPass, meta.hashedFilename, encryptionStandard.get());
+        std::unique_ptr<Account> account(createLocalAccount(accName, accPass, meta.hashedFilename, encryptionStandard.get()));
         
         if (user.empty()) {
             cout << "Viewing all passwords - feature not fully implemented" << endl;
-            delete account;
             return false;
         }
 
         bool result = account->viewPassword(accPass, user);
-        delete account;
         return result;
     } catch (const std::runtime_error& e) {
         cout << "Invalid account or password." << endl;
-        if (account) delete account;
         return false;
     }
 }
