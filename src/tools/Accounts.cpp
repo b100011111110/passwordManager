@@ -153,6 +153,7 @@ private:
       }
       deriveKeyFromPassword(vault_salt);
       vault.clear();
+      saveVault();
       return;
     }
 
