@@ -6,6 +6,7 @@ accounts.init
 data.init
 *.json
 master.key
+*.cache/
 
 # Build directories
 build/
