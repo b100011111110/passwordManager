@@ -111,31 +111,23 @@ private:
   }
 
   void saveVault() {
-    // Create JSON object of entries
     json vaultData = json::object();
     for (const auto &[id, crypt] : vault) {
       vaultData[id] = crypt;
     }
 
-    // Serialize to string
     string plaintextJson = vaultData.dump();
 
-    // Prepend magic header "PMGR"
     string plaintextToEncrypt = "PMGR" + plaintextJson;
-
     string encryptedData = this->encryptionStandard->encrypt(
         plaintextToEncrypt, this->encryptionKey);
 
-    // Write vault file: [16 bytes salt] + [encrypted blob]
     ofstream out(filePath, std::ios::binary);
     if (!out) {
       throw std::runtime_error("Failed to open vault file for writing");
     }
 
-    // Write salt
     out.write(reinterpret_cast<const char *>(vault_salt), 16);
-
-    // Write encrypted data
     out.write(encryptedData.c_str(), encryptedData.length());
     out.close();
 
@@ -163,7 +155,6 @@ private:
       throw std::runtime_error("Vault file too short, cannot read salt");
     }
 
-    // Read encrypted data (remaining bytes)
     string encryptedData((std::istreambuf_iterator<char>(in)),
                          std::istreambuf_iterator<char>());
     in.close();
@@ -175,11 +166,9 @@ private:
       return;
     }
 
-    // Derive key using salt from file
     deriveKeyFromPassword(vault_salt);
 
     try {
-      // Decrypt
       string decryptedData =
           this->encryptionStandard->decrypt(encryptedData, this->encryptionKey);
 
@@ -188,15 +177,11 @@ private:
         throw std::runtime_error("Wrong account password");
       }
 
-      // Extract plaintext JSON
       string plaintextJson = decryptedData.substr(4);
-
-      // Parse JSON
       json vaultData = json::parse(plaintextJson);
 
       vault.clear();
       
-      // Backward compatibility with older array formats
       if (vaultData.is_array()) {
         for (const auto &entry : vaultData) {
           string s = entry.get<string>();
@@ -211,7 +196,6 @@ private:
         }
       }
     } catch (const std::runtime_error &e) {
-      // Re-throw password errors
       throw;
     } catch (...) {
       throw std::runtime_error("Wrong account password");
@@ -219,7 +203,6 @@ private:
   }
 };
 
-// Factory function to create a LocalAccount
 Account *createLocalAccount(string user, string pass, string file,
                             Encryption *type) {
   return new LocalAccount(user, pass, file, type);

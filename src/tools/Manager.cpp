@@ -45,24 +45,20 @@ inline std::string getConfigFilePath() {
     return getDataDirectory() + "config.json";
 }
 
-// Set restrictive file permissions (0600 = owner read/write only)
 void setSecureFilePermissions(const string& filename) {
     chmod(filename.c_str(), S_IRUSR | S_IWUSR);  // 0600
 }
 
-// Encrypt accounts data using AES with hardware-protected master key
 string PasswordManager::encryptAccountsData(const string& plaintext) {
     AESEncryption aes;
     return aes.encrypt(plaintext, this->masterKey);  // vector overload — no EVP_BytesToKey
 }
 
-// Decrypt accounts data using AES with hardware-protected master key
 string PasswordManager::decryptAccountsData(const string& ciphertext) {
     AESEncryption aes;
     return aes.decrypt(ciphertext, this->masterKey);  // vector overload — no EVP_BytesToKey
 }
 
-// Generate SHA256 hash of account name for encrypted filename
 string hashAccountName(const string& accountName) {
     unsigned char hash[EVP_MAX_MD_SIZE];
     unsigned int lengthOfHash = 0;
@@ -95,7 +91,7 @@ string getEncryptionTypeFromConfig() {
             // If config load fails, use default
         }
     }
-    return "aes";  // Default to AES
+    return "aes";  
 }
 
 void saveEncryptionTypeToConfig(const string& encType) {
@@ -120,7 +116,6 @@ void saveEncryptionTypeToConfig(const string& encType) {
 }
 
 std::unique_ptr<Encryption> createEncryptionObject(const std::string& type) {
-    // Only AES encryption is supported
     return std::make_unique<AESEncryption>();
 }
 
@@ -147,10 +142,7 @@ void PasswordManager::loadExistingAccounts() {
                                       std::istreambuf_iterator<char>());
             infile.close();
 
-            // Decrypt the data
             string decrypted = decryptAccountsData(encryptedData);
-
-            // Parse JSON
             json accountsData = json::parse(decrypted);
 
             for (auto& [accName, accInfo] : accountsData.items()) {
@@ -183,7 +175,6 @@ void PasswordManager::saveAccountMetadata() {
             {"encryption", meta.encryptionType}
         };
     }
-    // Encrypt and save with secure permissions
     string plaintextJson = accountsData.dump(4);
     string encryptedJson = encryptAccountsData(plaintextJson);
     ofstream out(getAccountsFilePath(), std::ios::binary);
@@ -197,23 +188,14 @@ bool PasswordManager::createAccount(string accName, string accPass, string encry
         cout << "Account already exists." << endl;
         return false;
     }
-
-    // Only AES encryption is supported
     string type = "aes";
     std::transform(type.begin(), type.end(), type.begin(), ::tolower);
-
-    // Use hashed filename for encryption
     string hashedFilename = hashAccountName(accName);
     try {
-        // Create account object temporarily to validate and create vault file
         Account* tempAccount = createLocalAccount(accName, accPass, hashedFilename, encryptionStandard.get());
-        delete tempAccount;  // Clean up temporary object
-        
-        // Store only metadata in memory
+        delete tempAccount;  
         AccountMeta meta = {accName, hashedFilename, type};
-        accounts[accName] = meta;
-        
-        // Save account metadata (encrypted, no passwords)
+        accounts[accName] = meta;        
         saveAccountMetadata();
         
     } catch (const std::runtime_error& e) {
@@ -235,24 +217,19 @@ bool PasswordManager::deleteAccount(string accName, string accPass) {
     
     try {
         std::unique_ptr<Account> tempAccount(createLocalAccount(accName, accPass, meta.hashedFilename, encryptionStandard.get()));
-        // If we get here, password is valid
     } catch (const std::runtime_error& e) {
         cout << "Invalid account or password." << endl;
         return false;
     }
 
-    // Remove from accounts map
     accounts.erase(accName);
 
-    // Update account metadata file
     saveAccountMetadata();
 
-    // Delete vault file using hashed filename
     if (exists(path(meta.hashedFilename))) {
         remove(path(meta.hashedFilename));
     }
 
-    // Also try to delete old-style filename (backward compatibility)
     string oldFilename = accName + ".json";
     if (exists(path(oldFilename))) {
         remove(path(oldFilename));
@@ -332,11 +309,8 @@ bool PasswordManager::viewPasswords(string accName, string accPass, string user)
 }
 
 bool PasswordManager::setEncryption(string encryptionType) {
-    // Only AES encryption is supported
     string type = "aes";
-    // Convert to lowercase
     std::transform(type.begin(), type.end(), type.begin(), ::tolower);
-
     saveEncryptionTypeToConfig(type);
     cout << "Encryption type set to: " << type << endl;
     return true;

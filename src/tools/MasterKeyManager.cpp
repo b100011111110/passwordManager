@@ -31,7 +31,6 @@ std::vector<unsigned char> MasterKeyManager::getMasterKey() {
 }
 
 std::vector<unsigned char> MasterKeyManager::generateAndStoreMasterKey() {
-    // Create directory ~/.config/passwordManager/ with permissions 0700
     string configDir = string(getenv("HOME") ? getenv("HOME") : "") + "/.config/passwordManager";
     create_directories(path(configDir));
     chmod(configDir.c_str(), S_IRWXU);  // 0700
@@ -85,17 +84,14 @@ std::vector<unsigned char> MasterKeyManager::retrieveMasterKey() {
         std::cerr << "TPM unavailable, falling back to keyring..." << std::endl;
     }
 
-    // Try libsecret fallback
     try {
         vector<unsigned char> key = retrieveFromLibsecret();
         if (key.size() == 32) {
             return key;
         }
     } catch (const std::runtime_error& e) {
-        // Continue to file fallback
     }
 
-    // Development fallback: try encrypted file
     try {
         vector<unsigned char> key = retrieveFromEncryptedFile();
         if (key.size() == 32) {
@@ -119,14 +115,12 @@ bool MasterKeyManager::sealToTPM(const vector<unsigned char>& key) {
         string pubPath = getTpmKeyPath() + ".pub";
         string privPath = getTpmKeyPath() + ".priv";
 
-        // Create primary key
         string cmd1 = "tpm2_createprimary -C o -G rsa -g sha256 -c " + string(primaryCtxPath) + " 2>/dev/null";
         if (system(cmd1.c_str()) != 0) {
             remove(primaryCtxPath);
             return false;
         }
 
-        // Create sealed object reading from stdin
         string cmd2 = "tpm2_create -C " + string(primaryCtxPath) + " -L \"pcr:sha256:0,1,2,7\" -u \"" + pubPath + "\" -r \"" + privPath + "\" -i- 2>/dev/null";
         FILE* pipe = popen(cmd2.c_str(), "w");
         if (!pipe) {
@@ -137,7 +131,6 @@ bool MasterKeyManager::sealToTPM(const vector<unsigned char>& key) {
         fwrite(hexKey.data(), 1, hexKey.size(), pipe);
         int result = pclose(pipe);
 
-        // Clean up
         remove(primaryCtxPath);
 
         return result == 0;
@@ -200,7 +193,6 @@ std::vector<unsigned char> MasterKeyManager::unsealFromTPM() {
         }
         pclose(pipe);
 
-        // Clean up
         remove(primaryCtxPath);
         remove(loadedCtxPath);
 
@@ -285,7 +277,6 @@ bool MasterKeyManager::storeInEncryptedFile(const vector<unsigned char>& key) {
             return false;
         }
 
-        // Derive encryption key from machine-specific string using PBKDF2
         vector<unsigned char> fileKey(32);
         if (PKCS5_PBKDF2_HMAC(machineKey.c_str(), machineKey.size(),
                               salt, sizeof(salt), 200000,
@@ -293,12 +284,10 @@ bool MasterKeyManager::storeInEncryptedFile(const vector<unsigned char>& key) {
             return false;
         }
 
-        // Encrypt the master key
         AESEncryption aes;
         string hexKey = toHex(key);
         string encrypted = aes.encrypt(hexKey, fileKey);
 
-        // Store in file
         string keyFilePath = getMetaPath();
         keyFilePath = keyFilePath.substr(0, keyFilePath.find_last_of('/')) + "/master.key";
 
@@ -309,7 +298,6 @@ bool MasterKeyManager::storeInEncryptedFile(const vector<unsigned char>& key) {
         keyFile.write(encrypted.data(), encrypted.size());
         keyFile.close();
 
-        // Set restrictive permissions
         chmod(keyFilePath.c_str(), S_IRUSR | S_IWUSR);
 
         return true;
@@ -320,7 +308,6 @@ bool MasterKeyManager::storeInEncryptedFile(const vector<unsigned char>& key) {
 
 std::vector<unsigned char> MasterKeyManager::retrieveFromEncryptedFile() {
     try {
-        // Generate machine-specific key from hostname + username
         string machineKey = "";
         char hostname[256];
         if (gethostname(hostname, sizeof(hostname)) == 0) {
@@ -353,7 +340,6 @@ std::vector<unsigned char> MasterKeyManager::retrieveFromEncryptedFile() {
                         std::istreambuf_iterator<char>());
         keyFile.close();
 
-        // Derive encryption key from machine-specific string using PBKDF2
         vector<unsigned char> fileKey(32);
         if (PKCS5_PBKDF2_HMAC(machineKey.c_str(), machineKey.size(),
                               salt, sizeof(salt), 200000,
@@ -361,7 +347,6 @@ std::vector<unsigned char> MasterKeyManager::retrieveFromEncryptedFile() {
             throw std::runtime_error("Failed to derive file encryption key");
         }
 
-        // Decrypt the master key
         AESEncryption aes;
         string decryptedHex = aes.decrypt(encrypted, fileKey);
 

@@ -17,4 +17,4 @@ public:
     std::string decrypt(const std::string& data, const std::vector<unsigned char>& key) override;
 };
 
-#endif // ENCRYPTION_H
+#endif 

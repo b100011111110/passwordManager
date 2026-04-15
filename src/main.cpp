@@ -36,7 +36,6 @@ public:
   const termios& get() const { return oldt; }
 };
 
-// Function to read password with hidden input (asterisks shown in real-time)
 string readPasswordHidden() {
   string password;
   char ch;
@@ -49,18 +48,16 @@ string readPasswordHidden() {
   TerminalStateRAII termState;
   termios newt = termState.get();
 
-  // Disable echo and set non-canonical mode
   newt.c_lflag &= ~(ECHO | ICANON);
   newt.c_cc[VMIN] = 1;
   newt.c_cc[VTIME] = 0;
   tcsetattr(STDIN_FILENO, TCSANOW, &newt);
 
-  // Read password character by character
   while (read(STDIN_FILENO, &ch, 1) == 1) {
     if (ch == '\n') {
       break;
     }
-    if (ch == '\b' || ch == 127) { // Backspace or DEL
+    if (ch == '\b' || ch == 127) { 
       if (!password.empty()) {
         password.pop_back();
         cout << "\b \b";
@@ -100,13 +97,11 @@ void printHelp() {
 int main(int argc, char *argv[]) {
   signal(SIGINT, sigintHandler);
 
-  // Basic command-line parsing
   if (argc < 2) {
     printHelp();
     return 1;
   }
 
-  // Load encryption type from config and create appropriate encryption object
   std::string encType = getEncryptionTypeFromConfig();
   auto encryption = createEncryptionObject(encType);
   {
@@ -129,11 +124,8 @@ int main(int argc, char *argv[]) {
         return 1;
       }
 
-      // Prompt for password
       cout << "Enter account password: ";
       accountPassword = readPasswordHidden();
-
-      // Use AES encryption (only supported encryption type)
       string encType = "aes";
 
       if (mgr.createAccount(accountName, accountPassword, encType)) {
@@ -145,7 +137,6 @@ int main(int argc, char *argv[]) {
         return 1;
       }
 
-      // Prompt for password
       cout << "Enter account password: ";
       accountPassword = readPasswordHidden();
 
@@ -163,11 +154,9 @@ int main(int argc, char *argv[]) {
 
       string username = argv[3];
 
-      // Prompt for account password
       cout << "Enter account password: ";
       accountPassword = readPasswordHidden();
 
-      // Prompt for user password
       cout << "Enter password for user '" << username << "': ";
       string password = readPasswordHidden();
 
@@ -180,7 +169,6 @@ int main(int argc, char *argv[]) {
       }
       string username = argv[3];
 
-      // Prompt for account password
       cout << "Enter account password: ";
       accountPassword = readPasswordHidden();
 
@@ -197,7 +185,6 @@ int main(int argc, char *argv[]) {
       }
       string username = argv[3];
 
-      // Prompt for account password
       cout << "Enter account password: ";
       accountPassword = readPasswordHidden();
 
